@@ -24,7 +24,7 @@ struct SettingsView: View {
                     HStack {
                         Text("关于")
                         Spacer()
-                        Text("日省").foregroundStyle(.secondary)
+                        Text("三省小记").foregroundStyle(.secondary)
                     }
                     HStack {
                         Text("版本")

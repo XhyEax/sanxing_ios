@@ -1,0 +1,103 @@
+# 三省小记（sanxing）— 架构说明
+
+时间块记录 + 日记的 iOS App。SwiftUI + SwiftData 原生构建。
+
+- 用户可见名：**三省小记**（`INFOPLIST_KEY_CFBundleDisplayName`，取自曾子「吾日三省吾身」）。工程/scheme/target/bundle 内部标识为 `sanxing`，bundle id `com.xhy.sanxing`。
+- 远端：`https://github.com/XhyEax/sanxing_ios`（本地仓库根目录仍名 `rixing`，未随工程改名）。
+- 部署目标 iOS 17，版本 1.0。
+- 设计范式参考姊妹项目「逍遥居笔记」（xiaoyaoju），但**不共享代码**（不引本地 Swift Package）。
+
+## 构建
+
+工程使用 **文件系统同步组**（`PBXFileSystemSynchronizedRootGroup`）——`sanxing/` 下增删 `.swift` 文件无需改 `project.pbxproj`，直接放进文件夹即可。
+
+本机仅有命令行工具，但装了 **Xcode-beta**，用它编译验证：
+
+```bash
+cd /Users/xhy/Documents/git/rixing
+export DEVELOPER_DIR="/Applications/Xcode-beta.app/Contents/Developer"
+xcodebuild -scheme sanxing -destination 'generic/platform=iOS Simulator' build
+```
+
+> 编辑器里满屏的 SourceKit「Cannot find type / Ambiguous Query / 找不到宏」是工程外单文件解析的噪音，以真实 `xcodebuild` 结果为准（`** BUILD SUCCEEDED **`）。无法跑模拟器实测，手势类交互需在 Xcode 真机/模拟器手动验证。
+
+## 目录结构
+
+```
+sanxing/
+  sanxingApp.swift       @main：ModelContainer([TimeBlock, DiaryEntry]) + 主题 preferredColorScheme
+  ContentView.swift      MainTabView（4 个 Tab）；ContentView 仅作模板兼容壳
+  Models/
+    TimeBlock.swift        时间块 @Model + BlockCategory（分类枚举：颜色/图标/名称）
+    DiaryEntry.swift       日记 @Model + Mood（心情 emoji）
+    DateExt.swift          Date 扩展（startOfDay/addingDays/isSameDay/hm/dayTitle）+ formatDuration
+  Views/
+    TimelineView.swift       今日：整点时间轴（核心交互最复杂）
+    TimeBlockEditorView.swift  时间块 新建/编辑（init(day:hour:) / init(block:)）
+    DiaryView.swift          日记：按天分组倒序
+    DiaryEditorView.swift    日记 新建/编辑（init() / init(entry:)）
+    StatsView.swift          统计：今日各分类时长占比
+    SettingsView.swift       设置：主题切换 + 关于
+```
+
+## 数据模型
+
+**TimeBlock**（SwiftData @Model）
+- `start: Date` / `end: Date` / `title: String` / `category: String` / `note: String`
+- 计算属性：`duration`（秒）、`cat: BlockCategory`
+- `category` 存 `BlockCategory.rawValue`；时间块「计划/记录」通用，无独立状态字段。
+
+**BlockCategory**（enum String）：`work/study/rest/exercise/life/other`，各带 `name`（中文）、`color`、`icon`（SF Symbol）。内置一组，后续可做成可配置。
+
+**DiaryEntry**（SwiftData @Model）
+- `createdAt: Date` / `text: String` / `mood: Int`（0=未设，1…5）
+- 一天可多条。`Mood.emoji(_:)` 把 1…5 映射到 😣😕😐🙂😄。
+
+> **CloudKit 同步约束**：两个 @Model 的**每个存储属性都带默认值**（`var x: T = ...`）。这是 SwiftData↔CloudKit 镜像的硬性要求（属性必须可选或有默认值），实际值仍由 `init` 覆盖，别删默认值。不能用 `@Attribute(.unique)`、关系必须可选（目前无关系）。
+
+## iCloud / CloudKit 同步
+
+数据「**本地存一份 + 云端存一份**」：`sanxingApp` 用 `ModelConfiguration(cloudKitDatabase: .private("iCloud.com.xhy.sanxing"))`，底层 `NSPersistentCloudKitContainer` 始终保留本地 SQLite 副本并镜像到 iCloud 私有库——**切 iCloud 账号本地数据不会丢**。云容器初始化失败（未登录/未配好）时**兜底退回纯本地** `.none`，保证 App 不崩、本地那份永远在。
+
+- 容器 ID：`iCloud.com.xhy.sanxing`（`sanxing/sanxing.entitlements` 的 `icloud-container-identifiers`）。
+- 后台同步推送：`UIBackgroundModes = [remote-notification]`，放在**仓库根** `Info.plist`（`INFOPLIST_FILE = Info.plist`）。**不能放进 `sanxing/` 同步组**——文件系统同步组会把它自动加进 Copy Bundle Resources，与生成的 Info.plist 冲突（"Multiple commands produce Info.plist"）。其余 plist 键仍由 `GENERATE_INFOPLIST_FILE` 合并注入。
+- **首次真机联调**：CloudKit 开发环境会按 schema 自动建记录类型；**上架前**须在 CloudKit Dashboard 把 schema 部署到 Production。命令行只能 `xcodebuild` 验证编译，实际同步/双账号需真机手测。
+
+## 关键约定与范式
+
+- **TabView + 每 Tab 各自 NavigationStack**（同逍遥居）。
+- 编辑器统一用 `.sheet(item:)`（编辑已有）+ `.sheet(isPresented:)`/`.sheet(item:)`（新建），编辑器内含 `init` 区分新建/编辑，自带「删除」段。
+- 主题：`@AppStorage("appColorScheme")`（0 跟随系统 / 1 浅 / 2 深），在 `sanxingApp` 用 `preferredColorScheme` 应用。
+- 列表查询用 `@Query`，**按天过滤在内存里做**（`allBlocks.filter { $0.start.isSameDay(as: day) }`），数据量小不建动态谓词。
+
+## 今日时间轴（TimelineView）— 交互重点
+
+默认把一天切成 **24 个整点 1 小时槽**（0:00–23:00），是产品核心形态。
+
+- 用 `ScrollView + LazyVStack`（**不是 List**）——List 内拖拽选择会与滚动冲突。
+- 每个整点一行：左侧钟点（`lineLimit(1)+fixedSize`，任意 Dynamic Type 都单行）；右侧若该整点有块（按 `start` 的小时归类）则展示块卡片，否则显示「空闲 ＋」。
+- 看「今天」时 `ScrollViewReader` 自动滚到当前钟点并高亮。
+- 左侧整点时间务必保持单行：`Text(...).lineLimit(1).fixedSize(horizontal: true, vertical: false)`，列宽用 `minWidth` 不用固定 `width`（大字号会截断）。
+
+### 选择与批量操作
+
+- **进入多选**：右上「选择」按钮，或**长按任意行**（`LongPressGesture(0.3).sequenced(before: DragGesture)`）。长按后不抬手**上下滑动**连续选中（以长按行为锚点，选锚点→当前行的范围）。快速点按（<0.3s）不触发选择，仍是编辑块/新建空闲。
+- 拖拽命中靠每行上报 frame（`RowFrameKey` PreferenceKey + `.coordinateSpace(name:"timeline")`），`hour(at:)` 按 y 命中。
+- 两套选中集：`selected: Set<PersistentIdentifier>`（真实块）、`selectedHours: Set<Int>`（空闲整点）。
+- 底部工具栏（多选态，`.bottomBar`）按上下文出现：
+  - **填充**：选中空闲整点 → 选分类后各建 1 小时块（`fillSelectedHours`）。
+  - **合并**：仅当「恰好 1 个块 + 若干空闲」被选中（`canMerge`）→ 把该块拉长覆盖整段（`mergeSelected`，保留块原有更早起/更晚止）。
+  - **删除**：删选中的真实块。
+- 左上「全选/取消全选」覆盖块+空闲整点。
+
+## App 图标
+
+文字图标「三省」（横排两字，App 名「三省小记」的缩写）：1024×1024，靛蓝竖向渐变 + 白色宋体（STSongti-SC-Bold），全幅无圆角。由 `/tmp/makeicon.swift`（AppKit 渲染脚本）生成，输出到 `sanxing/Assets.xcassets/AppIcon.appiconset/icon.png`，light/dark/tinted 三外观共用。
+
+## 工作约定
+
+- **git push 仅在用户明确指示时执行**，不自动推送。本地 commit 可按需。
+
+## 后续可能方向（未做）
+
+- 时间块比例可视化（按时长拉高）/ 周视图；时间块计划态与打卡；统计周/月汇总与趋势；数据导入导出（可参考逍遥居的 JSON + 剪贴板 + 覆盖/跳过）。

@@ -1,6 +1,6 @@
 //
 //  ContentView.swift — 底部 TabView：今日 / 日记 / 统计 / 设置
-//  rixing
+//  sanxing
 //
 
 import SwiftUI
