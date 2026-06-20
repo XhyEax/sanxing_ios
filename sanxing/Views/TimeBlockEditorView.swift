@@ -5,6 +5,7 @@ import SwiftData
 struct TimeBlockEditorView: View {
     @Environment(\.modelContext) private var ctx
     @Environment(\.dismiss) private var dismiss
+    @Query private var customCats: [CustomCategory]
 
     // 时长预设（分钟）：快速选择，结束时间自动由「开始 + 时长」算出
     private static let presetMinutes = [15, 30, 45, 60]
@@ -56,6 +57,9 @@ struct TimeBlockEditorView: View {
                 Section {
                     TextField("做什么（可留空）", text: $title)
                 }
+                Section("备注") {
+                    TextField("备注", text: $note, axis: .vertical).lineLimit(2...6)
+                }
                 Section("分类") {
                     CategoryGrid(selectedKey: categoryKey) { categoryKey = $0 }
                 }
@@ -72,22 +76,15 @@ struct TimeBlockEditorView: View {
                     .padding(.vertical, 2)
                     DatePicker("开始", selection: $start)
                     DatePicker("结束", selection: $end)   // 自动算出，也可手动改
+                    // 表盘：拖把手改起止（仿健康 App）
+                    ClockDialPicker(start: $start, end: $end,
+                                    color: catStyle(for: categoryKey, custom: customCats).color,
+                                    startIcon: catStyle(for: categoryKey, custom: customCats).icon)
+                        .padding(.top, 4)
                 }
-                // 选时长 → 自动设结束；拖开始 → 整段平移保持时长；拖结束 → 手动微调长度
+                // 选时长 → 自动设结束（拖把手/改起止则各自独立调整，互不牵连）
                 .onChange(of: durationMinutes) { _, m in
                     end = start.addingTimeInterval(TimeInterval(m * 60))
-                }
-                .onChange(of: start) { old, new in
-                    end = end.addingTimeInterval(new.timeIntervalSince(old))
-                }
-                Section("备注") {
-                    TextField("备注", text: $note, axis: .vertical).lineLimit(2...6)
-                }
-                if existing != nil {
-                    Section {
-                        Button("删除", role: .destructive) { delete() }
-                            .frame(maxWidth: .infinity)
-                    }
                 }
             }
             .navigationTitle(existing == nil ? "新建时间块" : "编辑时间块")
@@ -96,8 +93,14 @@ struct TimeBlockEditorView: View {
                 ToolbarItem(placement: .cancellationAction) {
                     Button("取消") { dismiss() }
                 }
-                ToolbarItem(placement: .confirmationAction) {
-                    Button("保存") { save() }.disabled(end <= start)
+                ToolbarItemGroup(placement: .topBarTrailing) {
+                    if existing != nil {
+                        Button(role: .destructive) { delete() } label: {
+                            Image(systemName: "trash")
+                        }
+                        .tint(.red)
+                    }
+                    Button("保存") { save() }.fontWeight(.semibold).disabled(end <= start)
                 }
             }
         }

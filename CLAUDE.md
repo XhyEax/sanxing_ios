@@ -37,6 +37,7 @@ sanxing/
     TimelineView.swift       今日：整点时间轴（核心交互最复杂）
     TimeBlockEditorView.swift  时间块 新建/编辑（init(day:hour:) / init(block:)）
     CategoryPicker.swift     可复用分类网格 CategoryGrid + 自定义标签编辑器 CustomCategoryEditor
+    ClockDialPicker.swift    24 小时表盘（拖两个把手改 start/end，0 在正上、顺时针）
     DiaryView.swift          日记：按天分组倒序
     DiaryEditorView.swift    日记 新建/编辑（init() / init(entry:)）
     StatsView.swift          统计：今日各分类时长占比
@@ -73,7 +74,8 @@ sanxing/
 ## 关键约定与范式
 
 - **TabView + 每 Tab 各自 NavigationStack**（同逍遥居）。
-- 编辑器统一用 `.sheet(item:)`（编辑已有）+ `.sheet(isPresented:)`/`.sheet(item:)`（新建），编辑器内含 `init` 区分新建/编辑，自带「删除」段。
+- 编辑器统一用 `.sheet(item:)`（编辑已有）+ `.sheet(isPresented:)`/`.sheet(item:)`（新建），编辑器内含 `init` 区分新建/编辑。日记编辑器仍用底部「删除」段；**时间块编辑器**已把删除挪到右上角「保存」**左侧**的垃圾桶图标（仅编辑态）。
+- **时间块编辑器**（`TimeBlockEditorView`）表单顺序：标题 → 备注 → 分类 → 时间。时间区含 时长预设 + 开始/结束 DatePicker + **24 小时表盘** `ClockDialPicker`（拖把手改起止，仿健康 App）。三者互不牵连：改开始不再平移整段（去掉了 `onChange(of:start)`），只有时长预设会 `end = start + 时长`。表盘逻辑见下。
 - 主题：`@AppStorage("appColorScheme")`（0 跟随系统 / 1 浅 / 2 深），在 `sanxingApp` 用 `preferredColorScheme` 应用。
 - 列表查询用 `@Query`，**按天过滤在内存里做**（`allBlocks.filter { $0.start.isSameDay(as: day) }`），数据量小不建动态谓词。
 
@@ -92,6 +94,13 @@ sanxing/
 - `CategoryGrid`（`Views/CategoryPicker.swift`）渲染 `allCatStyles`：内置 + 自定义 + 末尾「＋ 自定义」格。自定义格**长按**出 contextMenu 可编辑/删除。编辑器传 `selectedKey` 做高亮、填充菜单传 `nil`。
 - 「＋ 自定义」开 `CustomCategoryEditor`（名称 + 色板/`ColorPicker` + 图标网格），保存即 insert `CustomCategory` 并通过 `onSave` 回调让调用方直接选中/使用。
 - 填充菜单从旧的 `confirmationDialog`（纯文字）改成 `.sheet` 内嵌 `CategoryGrid`，与编辑器视觉一致。
+
+### 时间块编辑器表盘（ClockDialPicker）
+
+- 24 小时环：**0 在正上方、顺时针**（6 右 / 12 下 / 18 左，同健康 App）。坐标 `point(t)`：`x=c.x+r·sin(t/24·2π)`、`y=c.y−r·cos(t/24·2π)`；反向命中 `atan2(dx, −dy)`。
+- 选中弧用单段 `Circle().trim(from:0,to:时长/24)` + `.rotationEffect(开始/24·360−90°)` 旋到位——避免跨 0 点的圆弧接缝。
+- 两把手按category色显示（start 用分类图标）。拖拽时按触点就近锁定把手；**拖 start 保持 end、拖 end 保持 start**，时长锁在 0…24h，end 可取 start 之后最近时刻 → 天然支持跨午夜。snap 到 5 分钟。
+- 与 `TimelineView.propagateCrossDay` 配合：表盘把块拖成跨午夜后，回到今日 `afterEdit` 会在次日按空闲复制。
 
 ### 跨天复制（propagateCrossDay）
 
