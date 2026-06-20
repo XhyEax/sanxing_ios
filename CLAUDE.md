@@ -25,15 +25,18 @@ xcodebuild -scheme sanxing -destination 'generic/platform=iOS Simulator' build
 
 ```
 sanxing/
-  sanxingApp.swift       @main：ModelContainer([TimeBlock, DiaryEntry]) + 主题 preferredColorScheme
+  sanxingApp.swift       @main：ModelContainer([TimeBlock, DiaryEntry, CustomCategory]) + 主题 preferredColorScheme
   ContentView.swift      MainTabView（4 个 Tab）；ContentView 仅作模板兼容壳
   Models/
-    TimeBlock.swift        时间块 @Model + BlockCategory（分类枚举：颜色/图标/名称）
+    TimeBlock.swift        时间块 @Model + BlockCategory（内置分类枚举：颜色/图标/名称）
     DiaryEntry.swift       日记 @Model + Mood（心情 emoji）
+    CustomCategory.swift   用户自定义分类 @Model（id/name/colorHex/icon/sortOrder）
+    CategoryStyle.swift    分类样式统一解析（CatStyle/catStyle/allCatStyles）+ Color↔hex + 色板/图标库
     DateExt.swift          Date 扩展（startOfDay/addingDays/isSameDay/hm/dayTitle）+ formatDuration
   Views/
     TimelineView.swift       今日：整点时间轴（核心交互最复杂）
     TimeBlockEditorView.swift  时间块 新建/编辑（init(day:hour:) / init(block:)）
+    CategoryPicker.swift     可复用分类网格 CategoryGrid + 自定义标签编辑器 CustomCategoryEditor
     DiaryView.swift          日记：按天分组倒序
     DiaryEditorView.swift    日记 新建/编辑（init() / init(entry:)）
     StatsView.swift          统计：今日各分类时长占比
@@ -44,16 +47,20 @@ sanxing/
 
 **TimeBlock**（SwiftData @Model）
 - `start: Date` / `end: Date` / `title: String` / `category: String` / `note: String`
-- 计算属性：`duration`（秒）、`cat: BlockCategory`
-- `category` 存 `BlockCategory.rawValue`；时间块「计划/记录」通用，无独立状态字段。
+- 计算属性：`duration`（秒）、`cat: BlockCategory`（旧的内置解析，新代码一律走 `catStyle`，勿再用）
+- `category` 存**分类 key**：内置 = `BlockCategory.rawValue`；自定义 = `CustomCategory.id`（UUID 串，不会撞内置）。时间块「计划/记录」通用，无独立状态字段。
 
-**BlockCategory**（enum String）：`work/study/rest/exercise/life/other`，各带 `name`（中文）、`color`、`icon`（SF Symbol）。内置一组，后续可做成可配置。
+**BlockCategory**（enum String）：`work/study/rest/exercise/life/fun/phone/reading/code/writing/other`，各带 `name`（中文）、`color`、`icon`（SF Symbol）。内置一组（颜色已用满，再加会撞色——所以加了自定义分类）。
+
+**CustomCategory**（SwiftData @Model）：用户自定义分类。`id`（=存进 TimeBlock.category 的 key）/`name`/`colorHex`（`#RRGGBB`）/`icon`（SF Symbol）/`sortOrder`。删除后旧块解析时兜底「其他」。
+
+**分类样式解析（`CategoryStyle.swift`）**：内置与自定义统一成 `CatStyle{key,name,icon,color}`。所有展示分类的地方（卡片/统计/选择器）都用 `catStyle(for: key, custom: customCats)` 解析单个 key、`allCatStyles(custom:)` 列全部可选项（内置 allCases 在前、自定义按 sortOrder 排在 `other` 右边）。视图各自 `@Query var customCats: [CustomCategory]`。`Color(hex:)`/`toHexString()` 给 ColorPicker 存取色值。
 
 **DiaryEntry**（SwiftData @Model）
 - `createdAt: Date` / `text: String` / `mood: Int`（0=未设，1…5）
 - 一天可多条。`Mood.emoji(_:)` 把 1…5 映射到 😣😕😐🙂😄。
 
-> **CloudKit 同步约束**：两个 @Model 的**每个存储属性都带默认值**（`var x: T = ...`）。这是 SwiftData↔CloudKit 镜像的硬性要求（属性必须可选或有默认值），实际值仍由 `init` 覆盖，别删默认值。不能用 `@Attribute(.unique)`、关系必须可选（目前无关系）。
+> **CloudKit 同步约束**：三个 @Model（含 `CustomCategory`）的**每个存储属性都带默认值**（`var x: T = ...`）。这是 SwiftData↔CloudKit 镜像的硬性要求（属性必须可选或有默认值），实际值仍由 `init` 覆盖，别删默认值。不能用 `@Attribute(.unique)`、关系必须可选（目前无关系）。
 
 ## iCloud / CloudKit 同步
 
@@ -61,7 +68,7 @@ sanxing/
 
 - 容器 ID：`iCloud.com.xhy.sanxing`（`sanxing/sanxing.entitlements` 的 `icloud-container-identifiers`）。
 - 后台同步推送：`UIBackgroundModes = [remote-notification]`，放在**仓库根** `Info.plist`（`INFOPLIST_FILE = Info.plist`）。**不能放进 `sanxing/` 同步组**——文件系统同步组会把它自动加进 Copy Bundle Resources，与生成的 Info.plist 冲突（"Multiple commands produce Info.plist"）。其余 plist 键仍由 `GENERATE_INFOPLIST_FILE` 合并注入。
-- **首次真机联调**：CloudKit 开发环境会按 schema 自动建记录类型；**上架前**须在 CloudKit Dashboard 把 schema 部署到 Production。命令行只能 `xcodebuild` 验证编译，实际同步/双账号需真机手测。
+- **首次真机联调**：CloudKit 开发环境会按 schema 自动建记录类型（含新增的 `CustomCategory`）；**上架前**须在 CloudKit Dashboard 把 schema 部署到 Production。命令行只能 `xcodebuild` 验证编译，实际同步/双账号需真机手测。
 
 ## 关键约定与范式
 
@@ -78,6 +85,19 @@ sanxing/
 - 每个整点一行：左侧钟点（`lineLimit(1)+fixedSize`，任意 Dynamic Type 都单行）；右侧若该整点有块（按 `start` 的小时归类）则展示块卡片，否则显示「空闲 ＋」。
 - 看「今天」时 `ScrollViewReader` 自动滚到当前钟点并高亮。
 - 左侧整点时间务必保持单行：`Text(...).lineLimit(1).fixedSize(horizontal: true, vertical: false)`，列宽用 `minWidth` 不用固定 `width`（大字号会截断）。
+- 顶栏（非多选态）：左上**日历按钮** → sheet 里的 graphical `DatePicker`（zh_CN，含「今天」）跳转 `selectedDay`；中间日期前后导航 `dayNav`；右上「选择」进多选。
+
+### 分类选择（编辑器 & 填充 共用 CategoryGrid）
+
+- `CategoryGrid`（`Views/CategoryPicker.swift`）渲染 `allCatStyles`：内置 + 自定义 + 末尾「＋ 自定义」格。自定义格**长按**出 contextMenu 可编辑/删除。编辑器传 `selectedKey` 做高亮、填充菜单传 `nil`。
+- 「＋ 自定义」开 `CustomCategoryEditor`（名称 + 色板/`ColorPicker` + 图标网格），保存即 insert `CustomCategory` 并通过 `onSave` 回调让调用方直接选中/使用。
+- 填充菜单从旧的 `confirmationDialog`（纯文字）改成 `.sheet` 内嵌 `CategoryGrid`，与编辑器视觉一致。
+
+### 跨天复制（propagateCrossDay）
+
+- 块跨午夜（`end > start 当天的次日 0 点`）时，在其后每个被覆盖的日子按**空闲时段**复制一份同类块（`title/category/note` 相同），**只填空闲、不覆盖已有块**（`copyIntoFreeSlots` 挖掉与已有块重叠的部分）。**不拆原块**——原块仍按 `start` 归在起始日。
+- 幂等：副本本身不跨天，重跑（每次编辑器 `onDismiss` 的 `afterEdit` 都会调）时旧副本已占槽 → 自动跳过、不重复建。
+- 已知局限：事后把块改短/删除，之前生成的次日副本不会自动回收（无法区分自动副本与手动块）。
 
 ### 选择与批量操作
 
@@ -85,10 +105,10 @@ sanxing/
 - 拖拽命中靠每行上报 frame（`RowFrameKey` PreferenceKey + `.coordinateSpace(name:"timeline")`），`hour(at:)` 按 y 命中。
 - 两套选中集：`selected: Set<PersistentIdentifier>`（真实块）、`selectedHours: Set<Int>`（空闲整点）。
 - 底部工具栏（多选态，`.bottomBar`）按上下文出现：
-  - **填充**：选中空闲整点 → 选分类后各建 1 小时块（`fillSelectedHours`）。
+  - **填充**：选中空闲整点 → 弹 `CategoryGrid` 选分类后各建 1 小时块（`fillSelectedHours(with: key)`）。
   - **合并**：仅当「恰好 1 个块 + 若干空闲」被选中（`canMerge`）→ 把该块拉长覆盖整段（`mergeSelected`，保留块原有更早起/更晚止）。
   - **删除**：删选中的真实块。
-- 左上「全选/取消全选」覆盖块+空闲整点。
+- 左上「全选/取消全选」**只覆盖空闲整点**（不动用户手动选中的块），`allSelected`/`toggleSelectAll` 都只看 `emptyHours`。
 
 ## App 图标
 
