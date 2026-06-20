@@ -74,7 +74,7 @@ sanxing/
 ## 关键约定与范式
 
 - **TabView + 每 Tab 各自 NavigationStack**（同逍遥居）。
-- 编辑器统一用 `.sheet(item:)`（编辑已有）+ `.sheet(isPresented:)`/`.sheet(item:)`（新建），编辑器内含 `init` 区分新建/编辑。日记编辑器仍用底部「删除」段；**时间块编辑器**已把删除挪到右上角「保存」**左侧**的垃圾桶图标（仅编辑态）。
+- 编辑器统一用 `.sheet(item:)`（编辑已有）+ `.sheet(isPresented:)`/`.sheet(item:)`（新建），编辑器内含 `init` 区分新建/编辑。日记编辑器仍用底部「删除」段；**时间块编辑器**已把删除挪到右上角「保存」**左侧**的「删除」文字按钮（红色，仅编辑态）。
 - **时间块编辑器**（`TimeBlockEditorView`）表单顺序：标题 → 备注 → 分类 → 时间。时间区含 时长预设 + 开始/结束 DatePicker + **24 小时表盘** `ClockDialPicker`（拖把手改起止，仿健康 App）。三者互不牵连：改开始不再平移整段（去掉了 `onChange(of:start)`），只有时长预设会 `end = start + 时长`。表盘逻辑见下。
 - 主题：`@AppStorage("appColorScheme")`（0 跟随系统 / 1 浅 / 2 深），在 `sanxingApp` 用 `preferredColorScheme` 应用。
 - 列表查询用 `@Query`，**按天过滤在内存里做**（`allBlocks.filter { $0.start.isSameDay(as: day) }`），数据量小不建动态谓词。

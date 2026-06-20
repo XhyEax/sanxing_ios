@@ -95,10 +95,8 @@ struct TimeBlockEditorView: View {
                 }
                 ToolbarItemGroup(placement: .topBarTrailing) {
                     if existing != nil {
-                        Button(role: .destructive) { delete() } label: {
-                            Image(systemName: "trash")
-                        }
-                        .tint(.red)
+                        Button("删除", role: .destructive) { delete() }
+                            .tint(.red)
                     }
                     Button("保存") { save() }.fontWeight(.semibold).disabled(end <= start)
                 }
