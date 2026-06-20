@@ -12,10 +12,10 @@ import SwiftData
 struct rixingApp: App {
     var sharedModelContainer: ModelContainer = {
         let schema = Schema([
-            Item.self,
+            TimeBlock.self,
+            DiaryEntry.self,
         ])
         let modelConfiguration = ModelConfiguration(schema: schema, isStoredInMemoryOnly: false)
-
         do {
             return try ModelContainer(for: schema, configurations: [modelConfiguration])
         } catch {
@@ -23,9 +23,20 @@ struct rixingApp: App {
         }
     }()
 
+    // 0=跟随系统 1=浅色 2=深色
+    @AppStorage("appColorScheme") private var colorSchemeIndex = 0
+    private var preferredColorScheme: ColorScheme? {
+        switch colorSchemeIndex {
+        case 1: return .light
+        case 2: return .dark
+        default: return nil
+        }
+    }
+
     var body: some Scene {
         WindowGroup {
-            ContentView()
+            MainTabView()
+                .preferredColorScheme(preferredColorScheme)
         }
         .modelContainer(sharedModelContainer)
     }

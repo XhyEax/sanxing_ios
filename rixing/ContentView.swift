@@ -1,61 +1,35 @@
 //
-//  ContentView.swift
+//  ContentView.swift — 底部 TabView：今日 / 日记 / 统计 / 设置
 //  rixing
-//
-//  Created by xhy on 2026/6/20.
 //
 
 import SwiftUI
 import SwiftData
 
-struct ContentView: View {
-    @Environment(\.modelContext) private var modelContext
-    @Query private var items: [Item]
-
+struct MainTabView: View {
     var body: some View {
-        NavigationSplitView {
-            List {
-                ForEach(items) { item in
-                    NavigationLink {
-                        Text("Item at \(item.timestamp, format: Date.FormatStyle(date: .numeric, time: .standard))")
-                    } label: {
-                        Text(item.timestamp, format: Date.FormatStyle(date: .numeric, time: .standard))
-                    }
-                }
-                .onDelete(perform: deleteItems)
-            }
-            .toolbar {
-                ToolbarItem(placement: .navigationBarTrailing) {
-                    EditButton()
-                }
-                ToolbarItem {
-                    Button(action: addItem) {
-                        Label("Add Item", systemImage: "plus")
-                    }
-                }
-            }
-        } detail: {
-            Text("Select an item")
-        }
-    }
+        TabView {
+            TimelineView()
+                .tabItem { Label("今日", systemImage: "calendar.day.timeline.left") }
 
-    private func addItem() {
-        withAnimation {
-            let newItem = Item(timestamp: Date())
-            modelContext.insert(newItem)
-        }
-    }
+            DiaryView()
+                .tabItem { Label("日记", systemImage: "book.closed") }
 
-    private func deleteItems(offsets: IndexSet) {
-        withAnimation {
-            for index in offsets {
-                modelContext.delete(items[index])
-            }
+            StatsView()
+                .tabItem { Label("统计", systemImage: "chart.bar.xaxis") }
+
+            SettingsView()
+                .tabItem { Label("设置", systemImage: "gearshape") }
         }
     }
 }
 
+// 兼容 Xcode 模板默认入口名
+struct ContentView: View {
+    var body: some View { MainTabView() }
+}
+
 #Preview {
-    ContentView()
-        .modelContainer(for: Item.self, inMemory: true)
+    MainTabView()
+        .modelContainer(for: [TimeBlock.self, DiaryEntry.self], inMemory: true)
 }
