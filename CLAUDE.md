@@ -32,6 +32,7 @@ sanxing/
     DiaryEntry.swift       日记 @Model + Mood（心情 emoji）
     CustomCategory.swift   用户自定义分类 @Model（id/name/colorHex/icon/sortOrder）
     CategoryStyle.swift    分类样式统一解析（CatStyle/catStyle/allCatStyles）+ Color↔hex + 色板/图标库
+    DataTransfer.swift     导入导出：DTO + BackupData(version) + ISO8601 JSON + 覆盖/跳过分流 + JSONDocument
     DateExt.swift          Date 扩展（startOfDay/addingDays/isSameDay/hm/dayTitle）+ formatDuration
   Views/
     TimelineView.swift       今日：整点时间轴（核心交互最复杂）
@@ -121,6 +122,14 @@ sanxing/
   - **删除**：删选中的真实块。
 - 左上「全选/取消全选」**只覆盖空闲整点**（不动用户手动选中的块），`allSelected`/`toggleSelectAll` 都只看 `emptyHours`。
 
+## 数据导入导出（参考 xiaoyaoju）
+
+设置「数据」段：导出到文件 / 复制到剪贴板 / 从文件导入 / 从剪贴板导入。
+
+- `DataTransfer.swift`：三类 `@Model` ↔ DTO（`TimeBlockDTO/DiaryEntryDTO/CustomCategoryDTO`），打包成 `BackupData{version, blocks, diaries, categories}`。JSON 用 **ISO8601** 日期、pretty-print。`@Model` 加了 `dto` 属性与 `convenience init(dto:)`（`CustomCategory(dto:)` 会**保留原 id**，否则时间块的 `category` 引用会断）。
+- 导出：`DataTransfer.encode` → 剪贴板（`UIPasteboard`）或 `.fileExporter`（`JSONDocument: FileDocument`，默认名 `三省小记备份_yyyyMMdd_HHmm`）。
+- 导入：剪贴板 / `.fileImporter`（安全作用域 `startAccessingSecurityScopedResource`）→ `decode` → `DataTransfer.plan` 按 key 判重（**时间块按 start、日记按 createdAt、分类按 id**）：不冲突的直接 insert，冲突的弹「覆盖/跳过」对话框统一处理。覆盖 = 删旧 insert 新。
+
 ## App 图标
 
 文字图标「三省」（横排两字，App 名「三省小记」的缩写）：1024×1024，靛蓝竖向渐变 + 白色宋体（STSongti-SC-Bold），全幅无圆角。由 `/tmp/makeicon.swift`（AppKit 渲染脚本）生成，输出到 `sanxing/Assets.xcassets/AppIcon.appiconset/icon.png`，light/dark/tinted 三外观共用。
@@ -131,4 +140,4 @@ sanxing/
 
 ## 后续可能方向（未做）
 
-- 时间块比例可视化（按时长拉高）/ 周视图；时间块计划态与打卡；统计周/月汇总与趋势；数据导入导出（可参考逍遥居的 JSON + 剪贴板 + 覆盖/跳过）。
+- 时间块比例可视化（按时长拉高）/ 周视图；时间块计划态与打卡；统计周/月汇总与趋势。
