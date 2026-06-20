@@ -41,6 +41,8 @@ struct TimelineView: View {
         let n = dayBlocks.count + emptyHours.count
         return n > 0 && selected.count == dayBlocks.count && selectedHours.count == emptyHours.count
     }
+    // 仅 1 个块 + 若干空闲被选中 → 可把空闲并入该块（拉长覆盖整段）
+    private var canMerge: Bool { selected.count == 1 && !selectedHours.isEmpty }
 
     var body: some View {
         NavigationStack {
@@ -108,6 +110,12 @@ struct TimelineView: View {
                 }
                 .disabled(selectedHours.isEmpty)
                 Spacer()
+                if canMerge {
+                    Button { mergeSelected() } label: {
+                        Label("合并", systemImage: "arrow.triangle.merge")
+                    }
+                    Spacer()
+                }
                 Button(role: .destructive) { deleteSelected() } label: {
                     Label("删除\(selected.isEmpty ? "" : " \(selected.count)")", systemImage: "trash")
                 }
@@ -268,6 +276,22 @@ struct TimelineView: View {
         for b in dayBlocks where selected.contains(b.id) { ctx.delete(b) }
         exitSelection()
     }
+    // 把选中的空闲整点并入唯一选中的块：块拉长到覆盖整段（保留块原有的更早起/更晚止）
+    private func mergeSelected() {
+        guard let b = dayBlocks.first(where: { selected.contains($0.id) }) else { return }
+        let cal = Calendar.current
+        let blockHour = cal.component(.hour, from: b.start)
+        let hours = selectedHours.union([blockHour])
+        guard let lo = hours.min(), let hi = hours.max() else { return }
+        let day0 = selectedDay.startOfDay
+        let loStart = cal.date(bySettingHour: lo, minute: 0, second: 0, of: day0) ?? day0
+        let hiEnd = (cal.date(bySettingHour: hi, minute: 0, second: 0, of: day0) ?? day0)
+            .addingTimeInterval(3600)
+        b.start = min(b.start, loStart)
+        b.end = max(b.end, hiEnd)
+        exitSelection()
+    }
+
     private func fillSelectedHours(with cat: BlockCategory) {
         let cal = Calendar.current
         for h in selectedHours {
