@@ -2,6 +2,7 @@
 import SwiftUI
 import SwiftData
 import UIKit
+import UniformTypeIdentifiers
 
 struct SettingsView: View {
     @AppStorage("appColorScheme") private var colorSchemeIndex = 0
