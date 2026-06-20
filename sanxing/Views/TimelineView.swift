@@ -48,6 +48,15 @@ struct TimelineView: View {
     private var visibleHours: [Int] { (0..<24).filter { coveringBlock(inHour: $0) == nil } }
     private var emptyHours: [Int] { visibleHours.filter { blocksStarting(inHour: $0).isEmpty } }
     private var nowHour: Int { Calendar.current.component(.hour, from: .now) }
+    // 当前时刻是否落在此可见行内：自身就是当前整点，或此行的多小时块覆盖了当前整点
+    private func rowContainsNow(_ h: Int) -> Bool {
+        guard selectedDay.isSameDay(as: .now) else { return false }
+        if h == nowHour { return true }
+        let cal = Calendar.current
+        guard let nowStart = cal.date(bySettingHour: nowHour, minute: 0, second: 0,
+                                      of: selectedDay.startOfDay) else { return false }
+        return blocksStarting(inHour: h).contains { $0.start <= nowStart && $0.end > nowStart }
+    }
     private var totalSelected: Int { selected.count + selectedHours.count }
     // 全选只针对空闲整点（默认不选已有块）
     private var allSelected: Bool { !emptyHours.isEmpty && selectedHours.count == emptyHours.count }
@@ -184,10 +193,12 @@ struct TimelineView: View {
     // 单个整点行
     private func hourRow(_ h: Int) -> some View {
         let items = blocksStarting(inHour: h)
-        let isNow = selectedDay.isSameDay(as: .now) && h == nowHour
+        let isNow = rowContainsNow(h)
         return HStack(alignment: .top, spacing: 10) {
             Text(String(format: "%02d:00", h))
                 .font(.caption).monospacedDigit()
+                .fontWeight(isNow ? .bold : .regular)
+                .underline(isNow, color: .accentColor)
                 .lineLimit(1)
                 .fixedSize(horizontal: true, vertical: false)   // 任意字体大小都单行
                 .foregroundStyle(isNow ? Color.accentColor : .secondary)
