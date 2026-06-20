@@ -289,34 +289,20 @@ struct TimelineView: View {
                 .disabled(selectedIdleCount == 0)
                 Spacer()
                 if let b = singleBlock {
-                    Menu {
-                        if Date.now < b.end {
-                            Button { setStartNow(b); exitSelection() } label: {
-                                Label("开始改为现在", systemImage: "arrow.right.to.line")
-                            }
-                        }
-                        if Date.now > b.start {
-                            Button { setEndNow(b); exitSelection() } label: {
-                                Label("结束改为现在", systemImage: "stop.circle")
-                            }
-                        }
-                        if !selectedHourStarts.isEmpty {
-                            Button { mergeSelected() } label: {
-                                Label("并入选中空闲", systemImage: "arrow.triangle.merge")
-                            }
-                        }
-                        if hasGapBefore(b) {
-                            Button { mergeGapBefore(b); exitSelection() } label: {
-                                Label("合并前面空闲", systemImage: "arrow.up.to.line")
-                            }
-                        }
-                        if hasGapAfter(b) {
-                            Button { mergeGapAfter(b); exitSelection() } label: {
-                                Label("合并后面空闲", systemImage: "arrow.down.to.line")
-                            }
-                        }
-                    } label: {
-                        Label("操作", systemImage: "ellipsis.circle")
+                    if Date.now < b.end {   // 开始改为现在
+                        Button { setStartNow(b); exitSelection() } label: { Image(systemName: "arrow.right.to.line") }
+                    }
+                    if Date.now > b.start {   // 结束改为现在
+                        Button { setEndNow(b); exitSelection() } label: { Image(systemName: "stop.circle") }
+                    }
+                    if selectedIdleCount > 0 {   // 并入选中空闲
+                        Button { mergeSelected() } label: { Image(systemName: "arrow.triangle.merge") }
+                    }
+                    if hasGapBefore(b) {   // 合并前面空闲
+                        Button { mergeGapBefore(b); exitSelection() } label: { Image(systemName: "arrow.up.to.line") }
+                    }
+                    if hasGapAfter(b) {    // 合并后面空闲
+                        Button { mergeGapAfter(b); exitSelection() } label: { Image(systemName: "arrow.down.to.line") }
                     }
                     Spacer()
                 }
