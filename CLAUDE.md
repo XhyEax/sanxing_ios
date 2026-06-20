@@ -68,7 +68,7 @@ sanxing/
 
 数据「**本地存一份 + 云端存一份**」：`sanxingApp` 用 `ModelConfiguration(cloudKitDatabase: .private("iCloud.com.xhy.sanxing"))`，底层 `NSPersistentCloudKitContainer` 始终保留本地 SQLite 副本并镜像到 iCloud 私有库——**切 iCloud 账号本地数据不会丢**。云容器初始化失败（未登录/未配好）时**兜底退回纯本地** `.none`，保证 App 不崩、本地那份永远在。
 
-- 容器 ID：`iCloud.com.xhy.sanxing`（`sanxing/sanxing.entitlements` 的 `icloud-container-identifiers`）。
+- 容器 ID：`iCloud.com.xhy.sanxing`（**仓库根** `sanxing.entitlements` 的 `icloud-container-identifiers`，`CODE_SIGN_ENTITLEMENTS = sanxing.entitlements`）。**不能放进 `sanxing/` 同步组**——文件系统同步组会把它当 target 成员加进 Copy Bundle Resources，真机签名时改写它 → 报「Entitlements file was modified during the build」。和 `Info.plist` 一样要放在仓库根。
 - 后台同步推送：`UIBackgroundModes = [remote-notification]`，放在**仓库根** `Info.plist`（`INFOPLIST_FILE = Info.plist`）。**不能放进 `sanxing/` 同步组**——文件系统同步组会把它自动加进 Copy Bundle Resources，与生成的 Info.plist 冲突（"Multiple commands produce Info.plist"）。其余 plist 键仍由 `GENERATE_INFOPLIST_FILE` 合并注入。
 - **首次真机联调**：CloudKit 开发环境会按 schema 自动建记录类型（含新增的 `CustomCategory`）；**上架前**须在 CloudKit Dashboard 把 schema 部署到 Production。命令行只能 `xcodebuild` 验证编译，实际同步/双账号需真机手测。
 
