@@ -13,16 +13,34 @@ struct ClockDialPicker: View {
 
     private enum Knob { case start, end }
     @State private var active: Knob?
+    @State private var editing = false   // 须先解锁才能拖拽，避免滚动时误触
 
     var body: some View {
+        VStack(spacing: 8) {
+            dial
+            Button {
+                withAnimation(.easeInOut(duration: 0.15)) { editing.toggle() }
+            } label: {
+                Label(editing ? "调整中，点按锁定" : "点按解锁调整",
+                      systemImage: editing ? "lock.open.fill" : "lock.fill")
+                    .font(.caption)
+            }
+            .buttonStyle(.bordered)
+            .tint(editing ? color : .secondary)
+        }
+    }
+
+    private var dial: some View {
         GeometryReader { geo in
             let side = min(geo.size.width, geo.size.height)
             let c = CGPoint(x: geo.size.width / 2, y: side / 2)
             let r = (side - ringWidth) / 2
+            let labelR = r - ringWidth / 2 - 16
             ZStack {
-                // 轨道
+                // 轨道（解锁时描一圈分类色高亮，提示可拖）
                 Circle()
-                    .stroke(Color.secondary.opacity(0.15), lineWidth: ringWidth)
+                    .stroke(editing ? color.opacity(0.35) : Color.secondary.opacity(0.15),
+                            lineWidth: ringWidth)
                     .frame(width: r * 2, height: r * 2)
                     .position(c)
 
@@ -34,13 +52,20 @@ struct ClockDialPicker: View {
                     .frame(width: r * 2, height: r * 2)
                     .position(c)
 
-                // 整点刻度数字
+                // 整点刻度数字：0/6/12/18 高亮加粗，其余次要
                 ForEach(Array(stride(from: 0, to: 24, by: 2)), id: \.self) { h in
+                    let major = h % 6 == 0
                     Text("\(h)")
-                        .font(.caption2).monospacedDigit()
-                        .foregroundStyle(.secondary)
-                        .position(point(Double(h), center: c, radius: r - ringWidth / 2 - 14))
+                        .font(major ? .headline : .caption2).monospacedDigit()
+                        .fontWeight(major ? .bold : .regular)
+                        .foregroundStyle(major ? Color.primary : .secondary)
+                        .position(point(Double(h), center: c, radius: labelR))
                 }
+                // 午夜 ✨ / 正午 ☀️（同健康 App）
+                Image(systemName: "sparkles").font(.footnote).foregroundStyle(.cyan)
+                    .position(point(0, center: c, radius: labelR - 30))
+                Image(systemName: "sun.max.fill").font(.footnote).foregroundStyle(.yellow)
+                    .position(point(12, center: c, radius: labelR - 30))
 
                 // 中心时长
                 VStack(spacing: 2) {
@@ -54,7 +79,8 @@ struct ClockDialPicker: View {
                 knob(endIcon).position(point(hours(of: start) + durationHours, center: c, radius: r))
             }
             .contentShape(Rectangle())
-            .highPriorityGesture(drag(center: c, radius: r))
+            // 锁定时不拦截手势，交给外层 ScrollView 滚动；解锁后才响应拖拽
+            .highPriorityGesture(drag(center: c, radius: r), including: editing ? .gesture : .subviews)
         }
         .frame(height: 240)
     }
@@ -66,6 +92,8 @@ struct ClockDialPicker: View {
                 .shadow(color: .black.opacity(0.2), radius: 1.5)
             Image(systemName: icon).font(.caption).foregroundStyle(color)
         }
+        .overlay { if editing { Circle().strokeBorder(color, lineWidth: 2) } }
+        .scaleEffect(editing ? 1.12 : 1)
     }
 
     // MARK: - 几何

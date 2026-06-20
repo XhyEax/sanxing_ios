@@ -98,8 +98,10 @@ sanxing/
 ### 时间块编辑器表盘（ClockDialPicker）
 
 - 24 小时环：**0 在正上方、顺时针**（6 右 / 12 下 / 18 左，同健康 App）。坐标 `point(t)`：`x=c.x+r·sin(t/24·2π)`、`y=c.y−r·cos(t/24·2π)`；反向命中 `atan2(dx, −dy)`。
+- 刻度 0/6/12/18 加粗高亮、其余次要；午夜 `sparkles`(cyan)、正午 `sun.max.fill`(yellow) 两枚图标贴在刻度内侧。
 - 选中弧用单段 `Circle().trim(from:0,to:时长/24)` + `.rotationEffect(开始/24·360−90°)` 旋到位——避免跨 0 点的圆弧接缝。
-- 两把手按category色显示（start 用分类图标）。拖拽时按触点就近锁定把手；**拖 start 保持 end、拖 end 保持 start**，时长锁在 0…24h，end 可取 start 之后最近时刻 → 天然支持跨午夜。snap 到 5 分钟。
+- 两把手按 category 色显示（start 用分类图标）。拖拽时按触点就近锁定把手；**拖 start 保持 end、拖 end 保持 start**，时长锁在 0…24h，end 可取 start 之后最近时刻 → 天然支持跨午夜。snap 到 5 分钟。
+- **防误触**：表盘默认锁定，须点下方「点按解锁调整」按钮（`editing` 状态）才响应拖拽；锁定时 `highPriorityGesture(_, including: .subviews)` 不拦手势、让外层 ScrollView 正常滚动，解锁后改 `.gesture`。解锁有视觉提示（轨道描分类色、把手放大描边）。
 - 与 `TimelineView.propagateCrossDay` 配合：表盘把块拖成跨午夜后，回到今日 `afterEdit` 会在次日按空闲复制。
 
 ### 跨天复制（propagateCrossDay）
