@@ -50,7 +50,7 @@ enum BlockCategory: String, CaseIterable, Identifiable {
         switch self {
         case .work: return .blue
         case .study: return .purple
-        case .rest: return .teal
+        case .rest: return .indigo
         case .exercise: return .orange
         case .life: return .pink
         case .fun: return .green
