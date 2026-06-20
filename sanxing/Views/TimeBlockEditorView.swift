@@ -11,7 +11,7 @@ struct TimeBlockEditorView: View {
 
     private let existing: TimeBlock?
     @State private var title: String
-    @State private var category: BlockCategory
+    @State private var categoryKey: String
     @State private var start: Date
     @State private var end: Date
     @State private var durationMinutes: Int
@@ -30,7 +30,7 @@ struct TimeBlockEditorView: View {
             base = cal.date(bySettingHour: 9, minute: 0, second: 0, of: day.startOfDay) ?? day.startOfDay
         }
         _title = State(initialValue: "")
-        _category = State(initialValue: .other)
+        _categoryKey = State(initialValue: BlockCategory.other.rawValue)
         _start = State(initialValue: base)
         _end = State(initialValue: base.addingTimeInterval(3600))
         _durationMinutes = State(initialValue: 60)
@@ -41,7 +41,7 @@ struct TimeBlockEditorView: View {
     init(block: TimeBlock) {
         existing = block
         _title = State(initialValue: block.title)
-        _category = State(initialValue: block.cat)
+        _categoryKey = State(initialValue: block.category)
         _start = State(initialValue: block.start)
         _end = State(initialValue: block.end)
         // 已有块时长若正好匹配某预设则选中，否则默认 1 小时
@@ -57,7 +57,7 @@ struct TimeBlockEditorView: View {
                     TextField("做什么（可留空）", text: $title)
                 }
                 Section("分类") {
-                    categoryPicker
+                    CategoryGrid(selectedKey: categoryKey) { categoryKey = $0 }
                 }
                 Section("时间") {
                     VStack(alignment: .leading, spacing: 6) {
@@ -103,33 +103,13 @@ struct TimeBlockEditorView: View {
         }
     }
 
-    private var categoryPicker: some View {
-        LazyVGrid(columns: Array(repeating: GridItem(.flexible()), count: 3), spacing: 10) {
-            ForEach(BlockCategory.allCases) { c in
-                Button { category = c } label: {
-                    VStack(spacing: 4) {
-                        Image(systemName: c.icon).font(.title3)
-                        Text(c.name).font(.caption)
-                    }
-                    .frame(maxWidth: .infinity)
-                    .padding(.vertical, 8)
-                    .background(category == c ? c.color.opacity(0.18) : Color.secondary.opacity(0.08),
-                                in: RoundedRectangle(cornerRadius: 10))
-                    .foregroundStyle(category == c ? c.color : .secondary)
-                }
-                .buttonStyle(.plain)
-            }
-        }
-        .padding(.vertical, 4)
-    }
-
     private func save() {
         if let b = existing {
-            b.title = title; b.category = category.rawValue
+            b.title = title; b.category = categoryKey
             b.start = start; b.end = end; b.note = note
         } else {
             ctx.insert(TimeBlock(start: start, end: end, title: title,
-                                 category: category.rawValue, note: note))
+                                 category: categoryKey, note: note))
         }
         dismiss()
     }

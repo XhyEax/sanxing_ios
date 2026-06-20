@@ -14,6 +14,7 @@ struct sanxingApp: App {
         let schema = Schema([
             TimeBlock.self,
             DiaryEntry.self,
+            CustomCategory.self,
         ])
         // 云端镜像：本地存一份 SQLite，同时同步到 iCloud 私有库。
         // 底层 NSPersistentCloudKitContainer 始终保留本地副本——切 iCloud 账号本地数据不丢。

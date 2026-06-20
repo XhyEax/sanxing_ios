@@ -4,16 +4,18 @@ import SwiftData
 
 struct StatsView: View {
     @Query(sort: \TimeBlock.start) private var blocks: [TimeBlock]
+    @Query private var customCats: [CustomCategory]
     @State private var day: Date = .now
 
     private var dayBlocks: [TimeBlock] { blocks.filter { $0.start.isSameDay(as: day) } }
     private var total: TimeInterval { dayBlocks.reduce(0) { $0 + $1.duration } }
 
-    // 各分类时长，倒序
-    private var byCategory: [(cat: BlockCategory, seconds: TimeInterval)] {
-        var dict: [BlockCategory: TimeInterval] = [:]
-        for b in dayBlocks { dict[b.cat, default: 0] += b.duration }
-        return dict.map { (cat: $0.key, seconds: $0.value) }.sorted { $0.seconds > $1.seconds }
+    // 各分类时长，倒序（按 category key 聚合，再解析样式——内置 + 自定义统一处理）
+    private var byCategory: [(style: CatStyle, seconds: TimeInterval)] {
+        var dict: [String: TimeInterval] = [:]
+        for b in dayBlocks { dict[b.category, default: 0] += b.duration }
+        return dict.map { (style: catStyle(for: $0.key, custom: customCats), seconds: $0.value) }
+            .sorted { $0.seconds > $1.seconds }
     }
 
     var body: some View {
@@ -33,8 +35,8 @@ struct StatsView: View {
                 }
                 if !byCategory.isEmpty {
                     Section("分类占比") {
-                        ForEach(byCategory, id: \.cat) { item in
-                            categoryBar(item.cat, item.seconds)
+                        ForEach(byCategory, id: \.style.key) { item in
+                            categoryBar(item.style, item.seconds)
                         }
                     }
                 }
@@ -48,11 +50,11 @@ struct StatsView: View {
         }
     }
 
-    private func categoryBar(_ cat: BlockCategory, _ seconds: TimeInterval) -> some View {
+    private func categoryBar(_ style: CatStyle, _ seconds: TimeInterval) -> some View {
         let ratio = total > 0 ? seconds / total : 0
         return VStack(alignment: .leading, spacing: 4) {
             HStack {
-                Label(cat.name, systemImage: cat.icon).font(.subheadline).foregroundStyle(cat.color)
+                Label(style.name, systemImage: style.icon).font(.subheadline).foregroundStyle(style.color)
                 Spacer()
                 Text("\(formatDuration(seconds)) · \(Int(ratio * 100))%")
                     .font(.caption).foregroundStyle(.secondary)
@@ -60,7 +62,7 @@ struct StatsView: View {
             GeometryReader { geo in
                 ZStack(alignment: .leading) {
                     Capsule().fill(Color.secondary.opacity(0.15))
-                    Capsule().fill(cat.color).frame(width: geo.size.width * ratio)
+                    Capsule().fill(style.color).frame(width: geo.size.width * ratio)
                 }
             }
             .frame(height: 6)
