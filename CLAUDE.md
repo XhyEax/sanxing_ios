@@ -106,13 +106,13 @@ sanxing/
 - 选中弧用单段 `Circle().trim(from:0,to:时长/24)` + `.rotationEffect(开始/24·360−90°)` 旋到位——避免跨 0 点的圆弧接缝。
 - 两把手按 category 色显示（start 用分类图标）。拖拽时按触点就近锁定把手；**拖 start 保持 end、拖 end 保持 start**，时长锁在 0…24h，end 可取 start 之后最近时刻 → 天然支持跨午夜。snap 到 5 分钟。
 - **防误触**：`.contentShape(RingShape(radius:r,width:ringWidth+16))` 把命中区限定在「圆环带」——只有点在两圆之间的环带才触发拖拽；点中心/外侧不拦手势，落给外层 ScrollView 滚动。`RingShape` = 外圆 + 反向内圆，nonzero 填出环带。
-- 与 `TimelineView.propagateCrossDay` 配合：表盘把块拖成跨午夜后，回到今日 `afterEdit` 会在次日按空闲复制。
+- 与 `TimelineView.normalize`（splitCrossDay）配合：表盘把块拖成跨午夜后，回到今日 `afterEdit` 会按 0 点拆成按天独立的块。
 
-### 跨天复制（propagateCrossDay）
+### 跨天拆分（splitCrossDay，按 0 点）+ 统一收尾 normalize
 
-- 块跨午夜（`end > start 当天的次日 0 点`）时，在其后每个被覆盖的日子按**空闲时段**复制一份同类块（`title/category/note` 相同），**只填空闲、不覆盖已有块**（`copyIntoFreeSlots` 挖掉与已有块重叠的部分）。**不拆原块**——原块仍按 `start` 归在起始日。
-- 幂等：副本本身不跨天，重跑（每次编辑器 `onDismiss` 的 `afterEdit` 都会调）时旧副本已占槽 → 自动跳过、不重复建。
-- 已知局限：事后把块改短/删除，之前生成的次日副本不会自动回收（无法区分自动副本与手动块）。
+- 所有改动后统一调 **`normalize()` = `splitCrossDay()` + `coalesceAdjacent()`**；填充 `fillSelectedHours`、长按合并 `mergeSelected`、编辑器关闭 `afterEdit` 都走它，保证跨天处理一致（之前 merge 会留一条跨天块、与填充不一致，已统一）。
+- `splitCrossDay`：块跨午夜（`end > start 当天的次日 0 点`）→ **原块裁到当天 24:00**，其后每天的剩余段**另建块**（`insertIntoFreeSlots` 只填空闲、不覆盖已有块）。即跨天一律**按 0 点拆成按天独立的块**，不再保留一条跨天块。
+- 幂等：拆出的段都不跨天，重跑不再拆；`coalesceAdjacent` 的同天守卫保证拆开的两段不会又被并回。
 
 ### 选择与批量操作
 

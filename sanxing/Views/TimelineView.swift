@@ -179,11 +179,13 @@ struct TimelineView: View {
         }
     }
 
-    // 编辑器关闭后：先按天复制跨天块，再合并相邻同类块
-    private func afterEdit() {
-        propagateCrossDay()
+    // 所有改动后的统一收尾：跨午夜的块按 0 点拆开，再合并同一天内相邻同类块。
+    // 填充 / 长按合并 / 编辑器关闭都走这里，保证跨天处理一致。
+    private func normalize() {
+        splitCrossDay()
         coalesceAdjacent()
     }
+    private func afterEdit() { normalize() }
 
     // MARK: - 天头（白线分割 + 日期 + 当天小结）
 
@@ -443,7 +445,7 @@ struct TimelineView: View {
         guard let lo = starts.min(), let hi = starts.max() else { return }
         b.start = min(b.start, lo)
         b.end = max(b.end, hi.addingTimeInterval(3600))
-        coalesceAdjacent()
+        normalize()
         exitSelection()
     }
 
@@ -451,7 +453,7 @@ struct TimelineView: View {
         for hs in selectedHourStarts {
             ctx.insert(TimeBlock(start: hs, end: hs.addingTimeInterval(3600), title: "", category: key))
         }
-        coalesceAdjacent()
+        normalize()
         exitSelection()
     }
 
@@ -471,28 +473,31 @@ struct TimelineView: View {
         }
     }
 
-    // MARK: - 跨天复制
+    // MARK: - 跨天拆分（0 点）
 
-    // 跨午夜的块，在其后每个被覆盖的日子里按「空闲时段」复制一份同类块；只填空闲、不覆盖已有块。幂等。
-    private func propagateCrossDay() {
+    // 跨午夜的块按 0 点拆开：原块裁到当天 24:00，其后每天的剩余段另建块（只填空闲、不覆盖已有块）。
+    // 与「填充/选中设置」一致——跨天一律按天独立成块，不再保留一条跨天块。幂等（拆出的段都不跨天）。
+    private func splitCrossDay() {
         let snapshot = allBlocks
         for b in snapshot {
             let firstMidnight = b.start.startOfDay.addingDays(1)
             guard b.end > firstMidnight else { continue }
+            let originalEnd = b.end
+            b.end = firstMidnight                       // 原块裁到起始日 24:00
             var dayStart = firstMidnight
-            while dayStart < b.end {
+            while dayStart < originalEnd {
                 let dayEnd = dayStart.addingDays(1)
-                copyIntoFreeSlots(category: b.category, title: b.title, note: b.note,
-                                  from: dayStart, to: min(b.end, dayEnd),
-                                  existing: snapshot, skip: b.id)
+                insertIntoFreeSlots(category: b.category, title: b.title, note: b.note,
+                                    from: dayStart, to: min(originalEnd, dayEnd),
+                                    existing: snapshot, skip: b.id)
                 dayStart = dayEnd
             }
         }
     }
 
-    private func copyIntoFreeSlots(category: String, title: String, note: String,
-                                   from: Date, to: Date,
-                                   existing: [TimeBlock], skip: PersistentIdentifier) {
+    private func insertIntoFreeSlots(category: String, title: String, note: String,
+                                     from: Date, to: Date,
+                                     existing: [TimeBlock], skip: PersistentIdentifier) {
         let busy = existing
             .filter { $0.id != skip && $0.end > from && $0.start < to }
             .map { (start: max($0.start, from), end: min($0.end, to)) }
