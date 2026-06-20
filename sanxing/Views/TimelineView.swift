@@ -30,7 +30,7 @@ struct TimelineView: View {
     @State private var dragAnchor: Date?
     @State private var scrollTarget: String?        // 顶部导航跳转目标（dayHeaderID）
 
-    private struct NewBlock: Identifiable { let hourStart: Date; var id: Date { hourStart } }
+    private struct NewBlock: Identifiable { let start: Date; let end: Date; var id: Date { start } }
 
     // MARK: - 取数（按天 / 按 hour-start）
 
@@ -70,13 +70,15 @@ struct TimelineView: View {
         return cal.date(bySettingHour: cal.component(.hour, from: .now), minute: 0, second: 0,
                         of: Date.now.startOfDay) ?? Date.now.startOfDay
     }
-    // 当前时刻是否落在此行（自身就是当前整点，或此行多小时块覆盖当前整点）
-    private func rowContainsNow(_ hs: Date) -> Bool {
-        guard hs.isSameDay(as: .now) else { return false }
-        let cal = Calendar.current
-        if cal.component(.hour, from: hs) == cal.component(.hour, from: .now) { return true }
-        let ns = nowHourStart
-        return blocksStarting(at: hs).contains { $0.start <= ns && $0.end > ns }
+    // 当前时刻是否落在 [s, e) 内（用于高亮当前行）
+    private func isNowIn(_ s: Date, _ e: Date) -> Bool {
+        let now = Date.now
+        return s <= now && now < e
+    }
+    // 24 小时制时钟标签 "HH:mm"
+    private func clock(_ d: Date) -> String {
+        let c = Calendar.current.dateComponents([.hour, .minute], from: d)
+        return String(format: "%02d:%02d", c.hour ?? 0, c.minute ?? 0)
     }
 
     private var totalSelected: Int { selected.count + selectedHourStarts.count }
@@ -150,8 +152,7 @@ struct TimelineView: View {
                 .presentationDetents([.medium, .large])
             }
             .sheet(item: $newBlock, onDismiss: afterEdit) {
-                TimeBlockEditorView(day: $0.hourStart,
-                                    hour: Calendar.current.component(.hour, from: $0.hourStart))
+                TimeBlockEditorView(start: $0.start, end: $0.end)
             }
             .sheet(item: $editing, onDismiss: afterEdit) { TimeBlockEditorView(block: $0) }
             .sheet(isPresented: $showDatePicker) {
@@ -250,12 +251,68 @@ struct TimelineView: View {
 
     // MARK: - 行
 
+    // 一个整点里按时间顺序排出的条目：空整点槽 / 块 / 块之间的空闲段（任意长度都显示）
+    private enum HourItem: Identifiable {
+        case empty(Date)            // 整点空闲槽（可多选/填充）
+        case block(TimeBlock)
+        case idle(Date, Date)       // 块之间剩余的空闲（展示 + 点按建块）
+        var id: String {
+            switch self {
+            case .empty(let d): return "e\(d.timeIntervalSinceReferenceDate)"
+            case .block(let b): return "b\(ObjectIdentifier(b).hashValue)"
+            case .idle(let s, _): return "i\(s.timeIntervalSinceReferenceDate)"
+            }
+        }
+    }
+
+    private func hourItems(_ hs: Date) -> [HourItem] {
+        let blocks = blocksStarting(at: hs).sorted { $0.start < $1.start }
+        if blocks.isEmpty { return [.empty(hs)] }
+        let he = hs.addingTimeInterval(3600)
+        var items: [HourItem] = []
+        var cursor = hs
+        for b in blocks {
+            if b.start > cursor { items.append(.idle(cursor, b.start)) }   // 块前空闲
+            items.append(.block(b))
+            cursor = max(cursor, b.end)
+        }
+        if cursor < he { items.append(.idle(cursor, he)) }                 // 块后到整点末的空闲
+        return items
+    }
+
     private func hourRow(_ hs: Date) -> some View {
-        let items = blocksStarting(at: hs)
-        let isNow = rowContainsNow(hs)
-        let h = Calendar.current.component(.hour, from: hs)
-        return HStack(alignment: .top, spacing: 10) {
-            Text(String(format: "%02d:00", h))
+        VStack(spacing: 6) {
+            ForEach(hourItems(hs)) { item in itemRow(item) }
+        }
+        .padding(.vertical, 2)
+    }
+
+    @ViewBuilder
+    private func itemRow(_ item: HourItem) -> some View {
+        switch item {
+        case .empty(let hs):
+            timeLabeledRow(time: hs, isNow: isNowIn(hs, hs.addingTimeInterval(3600))) {
+                emptySlot(hs)
+            }
+        case .block(let b):
+            timeLabeledRow(time: b.start, isNow: isNowIn(b.start, b.end)) {
+                SwipeBlockRow(leftEnabled: !selectionMode && isInProgress(b),
+                              rightEnabled: !selectionMode && hasGapBefore(b),
+                              onLeft: { endNow(b) },
+                              onRight: { mergeGapBefore(b) }) {
+                    Button { tapBlock(b) } label: { blockCard(b) }
+                        .buttonStyle(.plain)
+                }
+            }
+        case .idle(let s, let e):
+            timeLabeledRow(time: s, isNow: isNowIn(s, e)) { idleGap(s, e) }
+        }
+    }
+
+    private func timeLabeledRow<C: View>(time: Date, isNow: Bool,
+                                         @ViewBuilder content: () -> C) -> some View {
+        HStack(alignment: .top, spacing: 10) {
+            Text(clock(time))
                 .font(.caption).monospacedDigit()
                 .fontWeight(isNow ? .bold : .regular)
                 .underline(isNow, color: .accentColor)
@@ -264,30 +321,34 @@ struct TimelineView: View {
                 .foregroundStyle(isNow ? Color.accentColor : .secondary)
                 .frame(minWidth: 44, alignment: .leading)
                 .padding(.top, 8)
-
-            if items.isEmpty {
-                emptySlot(hs)
-            } else {
-                VStack(spacing: 6) {
-                    ForEach(items) { b in
-                        SwipeBlockRow(leftEnabled: !selectionMode && isInProgress(b),
-                                      rightEnabled: !selectionMode && hasGapBefore(b),
-                                      onLeft: { endNow(b) },
-                                      onRight: { mergeGapBefore(b) }) {
-                            Button { tapBlock(b) } label: { blockCard(b) }
-                                .buttonStyle(.plain)
-                        }
-                    }
-                }
-            }
+            content()
         }
-        .padding(.vertical, 2)
+    }
+
+    // 块之间的空闲段：左侧已是起始时间，这里显示时长，点按按该段起止建块
+    private func idleGap(_ s: Date, _ e: Date) -> some View {
+        Button {
+            if !selectionMode { newBlock = NewBlock(start: s, end: e) }
+        } label: {
+            HStack(spacing: 6) {
+                Text("空闲").font(.caption).foregroundStyle(.tertiary)
+                Text(formatDuration(e.timeIntervalSince(s))).font(.caption2).foregroundStyle(.quaternary)
+                Spacer()
+                if !selectionMode { Image(systemName: "plus").font(.caption2).foregroundStyle(.tertiary) }
+            }
+            .padding(.vertical, 6).padding(.horizontal, 12)
+            .frame(maxWidth: .infinity)
+            .background(Color.secondary.opacity(0.04), in: RoundedRectangle(cornerRadius: 8))
+        }
+        .buttonStyle(.plain)
+        .disabled(selectionMode)
     }
 
     private func emptySlot(_ hs: Date) -> some View {
         let isSel = selectedHourStarts.contains(hs)
         return Button {
-            if selectionMode { toggleHour(hs) } else { newBlock = NewBlock(hourStart: hs) }
+            if selectionMode { toggleHour(hs) }
+            else { newBlock = NewBlock(start: hs, end: hs.addingTimeInterval(3600)) }
         } label: {
             HStack {
                 if selectionMode {

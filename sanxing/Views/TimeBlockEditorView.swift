@@ -38,6 +38,18 @@ struct TimeBlockEditorView: View {
         _note = State(initialValue: "")
     }
 
+    // 新建：指定精确起止（点空闲段建块用）
+    init(start: Date, end: Date) {
+        existing = nil
+        _title = State(initialValue: "")
+        _categoryKey = State(initialValue: BlockCategory.other.rawValue)
+        _start = State(initialValue: start)
+        _end = State(initialValue: end)
+        let mins = Int(end.timeIntervalSince(start) / 60)
+        _durationMinutes = State(initialValue: Self.presetMinutes.contains(mins) ? mins : 60)
+        _note = State(initialValue: "")
+    }
+
     // 编辑
     init(block: TimeBlock) {
         existing = block
