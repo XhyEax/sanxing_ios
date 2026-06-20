@@ -28,16 +28,17 @@ final class TimeBlock {
 
 // 时间块分类：颜色 + 图标 + 名称（先内置一组，后续可做成可配置）
 enum BlockCategory: String, CaseIterable, Identifiable {
-    case work, study, rest, exercise, life, other
+    case work, study, rest, exercise, life, fun, other
     var id: String { rawValue }
 
     var name: String {
         switch self {
         case .work: return "工作"
         case .study: return "学习"
-        case .rest: return "休息"
+        case .rest: return "睡眠"
         case .exercise: return "运动"
         case .life: return "生活"
+        case .fun: return "娱乐"
         case .other: return "其他"
         }
     }
@@ -48,16 +49,18 @@ enum BlockCategory: String, CaseIterable, Identifiable {
         case .rest: return .teal
         case .exercise: return .orange
         case .life: return .pink
-        case .other: return .gray
+        case .fun: return .green
+        case .other: return .brown   // 原灰色对比度低、看不清，改棕色
         }
     }
     var icon: String {
         switch self {
         case .work: return "briefcase.fill"
         case .study: return "book.fill"
-        case .rest: return "cup.and.saucer.fill"
+        case .rest: return "bed.double.fill"
         case .exercise: return "figure.run"
         case .life: return "house.fill"
+        case .fun: return "gamecontroller.fill"
         case .other: return "circle.fill"
         }
     }
