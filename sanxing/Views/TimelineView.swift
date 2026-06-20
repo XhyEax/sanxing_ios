@@ -29,8 +29,10 @@ struct TimelineView: View {
     @State private var rowFrames: [Date: CGRect] = [:]
     @State private var dragAnchor: Date?
     @State private var scrollTarget: String?        // 顶部导航跳转目标（dayHeaderID）
+    @State private var overlap: OverlapPair?        // 编辑后检测到的重叠，弹窗让用户选择如何处理
 
     private struct NewBlock: Identifiable { let start: Date; let end: Date; var id: Date { start } }
+    private struct OverlapPair: Identifiable { let id = UUID(); let earlier: TimeBlock; let later: TimeBlock }
 
     // MARK: - 取数（按天 / 按 hour-start）
 
@@ -57,7 +59,13 @@ struct TimelineView: View {
         return (0..<24).compactMap { Calendar.current.date(byAdding: .hour, value: $0, to: d0) }
     }
     private func visibleHourStarts(of day: Date) -> [Date] {
-        hourStarts(of: day).filter { coveringBlock(at: $0) == nil }
+        hourStarts(of: day).filter { hs in
+            if !blocksStarting(at: hs).isEmpty { return true }   // 有块起始于此 → 显示（含与前块重叠的情形）
+            let he = hs.addingTimeInterval(3600)
+            // 整段被多小时块覆盖且无块 → 隐藏；若覆盖块在本整点内结束（留有空闲）→ 仍显示，渲染那段空闲
+            if let cov = coveringBlock(at: hs), cov.end >= he { return false }
+            return true
+        }
     }
     private func emptyHourStarts(of day: Date) -> [Date] {
         visibleHourStarts(of: day).filter { blocksStarting(at: $0).isEmpty }
@@ -155,6 +163,15 @@ struct TimelineView: View {
                 TimeBlockEditorView(start: $0.start, end: $0.end)
             }
             .sheet(item: $editing, onDismiss: afterEdit) { TimeBlockEditorView(block: $0) }
+            .confirmationDialog("时间重叠", isPresented: Binding(
+                get: { overlap != nil }, set: { if !$0 { overlap = nil } }
+            ), titleVisibility: .visible, presenting: overlap) { p in
+                Button("把「\(blockName(p.later))」开始改到 \(clock(p.earlier.end))") { resolveMovingLater(p) }
+                Button("把「\(blockName(p.earlier))」结束改到 \(clock(p.later.start))") { resolveMovingEarlier(p) }
+                Button("保持重叠", role: .cancel) { overlap = nil }
+            } message: { p in
+                Text("「\(blockName(p.earlier))」(到 \(clock(p.earlier.end))) 与「\(blockName(p.later))」(\(clock(p.later.start)) 起) 重叠，是否同步调整？")
+            }
             .sheet(isPresented: $showDatePicker) {
                 NavigationStack {
                     VStack {
@@ -186,7 +203,40 @@ struct TimelineView: View {
         splitCrossDay()
         coalesceAdjacent()
     }
-    private func afterEdit() { normalize() }
+    private func afterEdit() {
+        normalize()
+        checkOverlap()
+    }
+
+    // 编辑后若有「不同分类」的相邻块时间重叠（同类已被 coalesce 合并），弹窗让用户选择如何处理
+    private func checkOverlap() {
+        let sorted = allBlocks.sorted { $0.start < $1.start }
+        guard sorted.count > 1 else { return }
+        for k in 1..<sorted.count {
+            let a = sorted[k - 1], b = sorted[k]
+            if a.start.isSameDay(as: b.start), a.end > b.start {
+                overlap = OverlapPair(earlier: a, later: b)
+                return
+            }
+        }
+    }
+
+    private func blockName(_ b: TimeBlock) -> String {
+        b.title.isEmpty ? catStyle(for: b.category, custom: customCats).name : b.title
+    }
+
+    // 顺移后块：后块开始改到前块结束（被完全覆盖则删除）
+    private func resolveMovingLater(_ p: OverlapPair) {
+        if p.earlier.end < p.later.end { p.later.start = p.earlier.end } else { ctx.delete(p.later) }
+        overlap = nil
+        afterEdit()   // 继续规整并检测下一处重叠
+    }
+    // 缩短前块：前块结束改到后块开始（变空则删除）
+    private func resolveMovingEarlier(_ p: OverlapPair) {
+        if p.earlier.start < p.later.start { p.earlier.end = p.later.start } else { ctx.delete(p.earlier) }
+        overlap = nil
+        afterEdit()
+    }
 
     // MARK: - 天头（白线分割 + 日期 + 当天小结）
 
@@ -266,13 +316,21 @@ struct TimelineView: View {
     }
 
     private func hourItems(_ hs: Date) -> [HourItem] {
-        let blocks = blocksStarting(at: hs).sorted { $0.start < $1.start }
-        if blocks.isEmpty { return [.empty(hs)] }
         let he = hs.addingTimeInterval(3600)
-        var items: [HourItem] = []
+        let blocks = blocksStarting(at: hs).sorted { $0.start < $1.start }
+        let cov = coveringBlock(at: hs)
+        // 游标从整点起；若被前一个多小时块占用了开头，跳到它的结束（那段不算空闲）
         var cursor = hs
+        if let cov { cursor = min(he, max(cursor, cov.end)) }
+
+        if blocks.isEmpty {
+            if cov == nil { return [.empty(hs)] }              // 完全空 → 整点空闲槽
+            return cursor < he ? [.idle(cursor, he)] : []      // 覆盖块在本整点内结束 → 渲染剩余空闲
+        }
+
+        var items: [HourItem] = []
         for b in blocks {
-            if b.start > cursor { items.append(.idle(cursor, b.start)) }   // 块前空闲
+            if b.start > cursor { items.append(.idle(cursor, b.start)) }   // 块前空闲（非整点起始也会显示）
             items.append(.block(b))
             cursor = max(cursor, b.end)
         }
@@ -296,13 +354,9 @@ struct TimelineView: View {
             }
         case .block(let b):
             timeLabeledRow(time: b.start, isNow: isNowIn(b.start, b.end)) {
-                SwipeBlockRow(leftEnabled: !selectionMode && isInProgress(b),
-                              rightEnabled: !selectionMode && hasGapBefore(b),
-                              onLeft: { endNow(b) },
-                              onRight: { mergeGapBefore(b) }) {
-                    Button { tapBlock(b) } label: { blockCard(b) }
-                        .buttonStyle(.plain)
-                }
+                Button { tapBlock(b) } label: { blockCard(b) }
+                    .buttonStyle(.plain)
+                    .contextMenu { blockMenu(b) }   // 长按弹菜单（结束/合并空闲/编辑/删除）
             }
         case .idle(let s, let e):
             timeLabeledRow(time: s, isNow: isNowIn(s, e)) { idleGap(s, e) }
@@ -539,9 +593,23 @@ struct TimelineView: View {
         }
     }
 
-    // MARK: - 滑动动作（左滑结束 / 右滑合并前面空闲）
+    // MARK: - 块长按菜单（立即结束 / 合并前面空闲 / 编辑 / 删除）
 
-    // 进行中的块（已开始、未结束）才能左滑「立即结束」
+    @ViewBuilder
+    private func blockMenu(_ b: TimeBlock) -> some View {
+        if isInProgress(b) {
+            Button { endNow(b) } label: { Label("立即结束（到现在）", systemImage: "stop.circle") }
+        }
+        if hasGapBefore(b) {
+            Button { mergeGapBefore(b) } label: { Label("合并前面空闲", systemImage: "arrow.up.to.line") }
+        }
+        Button { editing = b } label: { Label("编辑", systemImage: "pencil") }
+        Button(role: .destructive) { ctx.delete(b); coalesceAdjacent() } label: {
+            Label("删除", systemImage: "trash")
+        }
+    }
+
+    // 进行中的块（已开始、未结束）才能「立即结束」
     private func isInProgress(_ b: TimeBlock) -> Bool {
         let now = Date.now
         return b.start < now && now < b.end
@@ -610,56 +678,5 @@ struct TimelineView: View {
             ctx.insert(TimeBlock(start: cursor, end: to,
                                  title: title, category: category, note: note))
         }
-    }
-}
-
-// 块卡片的左右滑动动作（今日是 ScrollView+LazyVStack，没有 List 的 .swipeActions，自己做一个）
-// 左滑露出「结束」、右滑露出「合并空闲」，滑过阈值松手即提交。
-private struct SwipeBlockRow<Content: View>: View {
-    var leftEnabled: Bool
-    var rightEnabled: Bool
-    var onLeft: () -> Void
-    var onRight: () -> Void
-    @ViewBuilder var content: Content
-
-    @State private var dx: CGFloat = 0
-    private let limit: CGFloat = 96
-    private let threshold: CGFloat = 64
-
-    var body: some View {
-        ZStack {
-            if dx < 0 {
-                actionLabel("结束", "stop.circle.fill", .red, alignment: .trailing)
-            } else if dx > 0 {
-                actionLabel("合并空闲", "arrow.up.to.line", .blue, alignment: .leading)
-            }
-            content
-                .offset(x: dx)
-                .gesture(drag)
-        }
-    }
-
-    private var drag: some Gesture {
-        DragGesture(minimumDistance: 12)
-            .onChanged { v in
-                guard abs(v.translation.width) > abs(v.translation.height) else { return }
-                let w = v.translation.width
-                if w < 0 && leftEnabled { dx = max(w, -limit) }
-                else if w > 0 && rightEnabled { dx = min(w, limit) }
-            }
-            .onEnded { _ in
-                let left = dx <= -threshold, right = dx >= threshold
-                withAnimation(.spring(response: 0.25, dampingFraction: 0.85)) { dx = 0 }
-                if left { onLeft() } else if right { onRight() }
-            }
-    }
-
-    private func actionLabel(_ text: String, _ icon: String, _ color: Color, alignment: Alignment) -> some View {
-        RoundedRectangle(cornerRadius: 8).fill(color)
-            .overlay(
-                Label(text, systemImage: icon).font(.caption).foregroundStyle(.white)
-                    .padding(.horizontal, 14),
-                alignment: alignment
-            )
     }
 }
