@@ -13,12 +13,14 @@ struct TimeBlockEditorView: View {
     @State private var end: Date
     @State private var note: String
 
-    // 新建：默认从当天当前小时起，时长 1 小时
-    init(day: Date) {
+    // 新建：默认时长 1 小时。指定 hour 则从该整点起；否则当天用当前整点、他天用 9 点
+    init(day: Date, hour: Int? = nil) {
         existing = nil
         let cal = Calendar.current
         let base: Date
-        if day.isSameDay(as: .now) {
+        if let h = hour {
+            base = cal.date(bySettingHour: h, minute: 0, second: 0, of: day.startOfDay) ?? day.startOfDay
+        } else if day.isSameDay(as: .now) {
             base = cal.date(bySetting: .minute, value: 0, of: .now) ?? .now
         } else {
             base = cal.date(bySettingHour: 9, minute: 0, second: 0, of: day.startOfDay) ?? day.startOfDay
