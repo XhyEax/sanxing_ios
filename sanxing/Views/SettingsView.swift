@@ -27,46 +27,9 @@ struct SettingsView: View {
     var body: some View {
         NavigationStack {
             Form {
-                Section("外观") {
-                    Picker("主题", selection: $colorSchemeIndex) {
-                        Text("跟随系统").tag(0)
-                        Text("浅色").tag(1)
-                        Text("深色").tag(2)
-                    }
-                    .pickerStyle(.segmented)
-                }
-
-                Section("数据") {
-                    Button { exportToFile() } label: {
-                        Label("导出到文件", systemImage: "square.and.arrow.up")
-                    }
-                    Button { copyToClipboard() } label: {
-                        Label("复制到剪贴板", systemImage: "doc.on.doc")
-                    }
-                    Button { showImporter = true } label: {
-                        Label("从文件导入", systemImage: "square.and.arrow.down")
-                    }
-                    Button { importFromClipboard() } label: {
-                        Label("从剪贴板导入", systemImage: "doc.on.clipboard")
-                    }
-                } footer: {
-                    Text("导出为 JSON（时间块 / 日记 / 自定义分类）。导入时若条目已存在，可选择覆盖或跳过。")
-                }
-
-                Section {
-                    HStack {
-                        Text("关于")
-                        Spacer()
-                        Text("三省小记").foregroundStyle(.secondary)
-                    }
-                    HStack {
-                        Text("版本")
-                        Spacer()
-                        Text(appVersion).foregroundStyle(.secondary)
-                    }
-                } footer: {
-                    Text("记录每一段时间，写下每一天。")
-                }
+                appearanceSection
+                dataSection
+                aboutSection
             }
             .navigationTitle("设置")
             .fileExporter(isPresented: $showExporter, document: exportDoc,
@@ -87,6 +50,55 @@ struct SettingsView: View {
             .alert(alertMsg ?? "", isPresented: Binding(
                 get: { alertMsg != nil }, set: { if !$0 { alertMsg = nil } }
             )) { Button("好的", role: .cancel) {} }
+        }
+    }
+
+    @ViewBuilder private var appearanceSection: some View {
+        Section("外观") {
+            Picker("主题", selection: $colorSchemeIndex) {
+                Text("跟随系统").tag(0)
+                Text("浅色").tag(1)
+                Text("深色").tag(2)
+            }
+            .pickerStyle(.segmented)
+        }
+    }
+
+    @ViewBuilder private var dataSection: some View {
+        Section {
+            Button { exportToFile() } label: {
+                Label("导出到文件", systemImage: "square.and.arrow.up")
+            }
+            Button { copyToClipboard() } label: {
+                Label("复制到剪贴板", systemImage: "doc.on.doc")
+            }
+            Button { showImporter = true } label: {
+                Label("从文件导入", systemImage: "square.and.arrow.down")
+            }
+            Button { importFromClipboard() } label: {
+                Label("从剪贴板导入", systemImage: "doc.on.clipboard")
+            }
+        } header: {
+            Text("数据")
+        } footer: {
+            Text("导出为 JSON（时间块 / 日记 / 自定义分类）。导入时若条目已存在，可选择覆盖或跳过。")
+        }
+    }
+
+    @ViewBuilder private var aboutSection: some View {
+        Section {
+            HStack {
+                Text("关于")
+                Spacer()
+                Text("三省小记").foregroundStyle(.secondary)
+            }
+            HStack {
+                Text("版本")
+                Spacer()
+                Text(appVersion).foregroundStyle(.secondary)
+            }
+        } footer: {
+            Text("记录每一段时间，写下每一天。")
         }
     }
 
