@@ -6,11 +6,15 @@ struct TimeBlockEditorView: View {
     @Environment(\.modelContext) private var ctx
     @Environment(\.dismiss) private var dismiss
 
+    // 时长预设（分钟）：快速选择，结束时间自动由「开始 + 时长」算出
+    private static let presetMinutes = [15, 30, 45, 60]
+
     private let existing: TimeBlock?
     @State private var title: String
     @State private var category: BlockCategory
     @State private var start: Date
     @State private var end: Date
+    @State private var durationMinutes: Int
     @State private var note: String
 
     // 新建：默认时长 1 小时。指定 hour 则从该整点起；否则当天用当前整点、他天用 9 点
@@ -29,6 +33,7 @@ struct TimeBlockEditorView: View {
         _category = State(initialValue: .other)
         _start = State(initialValue: base)
         _end = State(initialValue: base.addingTimeInterval(3600))
+        _durationMinutes = State(initialValue: 60)
         _note = State(initialValue: "")
     }
 
@@ -39,6 +44,9 @@ struct TimeBlockEditorView: View {
         _category = State(initialValue: block.cat)
         _start = State(initialValue: block.start)
         _end = State(initialValue: block.end)
+        // 已有块时长若正好匹配某预设则选中，否则默认 1 小时
+        let mins = Int(block.duration / 60)
+        _durationMinutes = State(initialValue: Self.presetMinutes.contains(mins) ? mins : 60)
         _note = State(initialValue: block.note)
     }
 
@@ -52,14 +60,25 @@ struct TimeBlockEditorView: View {
                     categoryPicker
                 }
                 Section("时间") {
-                    DatePicker("开始", selection: $start)
-                    DatePicker("结束", selection: $end)
-                    HStack {
-                        Text("时长").foregroundStyle(.secondary)
-                        Spacer()
-                        Text(formatDuration(max(0, end.timeIntervalSince(start))))
-                            .foregroundStyle(end > start ? Color.primary : Color.red)
+                    VStack(alignment: .leading, spacing: 6) {
+                        Text("时长").font(.subheadline).foregroundStyle(.secondary)
+                        Picker("时长", selection: $durationMinutes) {
+                            ForEach(Self.presetMinutes, id: \.self) { m in
+                                Text(m == 60 ? "1小时" : "\(m)分钟").tag(m)
+                            }
+                        }
+                        .pickerStyle(.segmented)
                     }
+                    .padding(.vertical, 2)
+                    DatePicker("开始", selection: $start)
+                    DatePicker("结束", selection: $end)   // 自动算出，也可手动改
+                }
+                // 选时长 → 自动设结束；拖开始 → 整段平移保持时长；拖结束 → 手动微调长度
+                .onChange(of: durationMinutes) { _, m in
+                    end = start.addingTimeInterval(TimeInterval(m * 60))
+                }
+                .onChange(of: start) { old, new in
+                    end = end.addingTimeInterval(new.timeIntervalSince(old))
                 }
                 Section("备注") {
                     TextField("备注", text: $note, axis: .vertical).lineLimit(2...6)
