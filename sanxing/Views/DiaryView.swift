@@ -51,7 +51,9 @@ struct DiaryView: View {
         HStack(alignment: .top, spacing: 10) {
             Text(e.createdAt.hm)
                 .font(.caption).foregroundStyle(.secondary).monospacedDigit()
-                .frame(width: 44, alignment: .leading)
+                .lineLimit(1)
+                .fixedSize(horizontal: true, vertical: false)   // 与「今日」一致：任意字号都完整单行
+                .frame(minWidth: 44, alignment: .leading)
             if !Mood.emoji(e.mood).isEmpty {
                 Text(Mood.emoji(e.mood))
             }
