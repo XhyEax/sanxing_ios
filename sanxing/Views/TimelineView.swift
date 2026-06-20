@@ -564,12 +564,19 @@ struct TimelineView: View {
         let lo = min(ia, ib), hi = max(ia, ib)
         var ids: Set<PersistentIdentifier> = []
         var hours: Set<Date> = []
+        var idles: Set<IdleRange> = []
         for hs in ordered[lo...hi] {
-            let items = blocksStarting(at: hs)
-            if items.isEmpty { hours.insert(hs) } else { ids.formUnion(items.map { $0.id }) }
+            for item in hourItems(hs) {     // 选中该整点里的全部条目：块 / 空整点 / 小空闲段
+                switch item {
+                case .empty(let h): hours.insert(h)
+                case .block(let bl): ids.insert(bl.id)
+                case .idle(let s, let e): idles.insert(IdleRange(start: s, end: e))
+                }
+            }
         }
         selected = ids
         selectedHourStarts = hours
+        selectedIdle = idles
     }
 
     // MARK: - 点选 / 批量操作
