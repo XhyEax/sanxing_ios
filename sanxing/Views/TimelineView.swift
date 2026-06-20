@@ -11,6 +11,8 @@ private struct RowFrameKey: PreferenceKey {
 }
 
 struct TimelineView: View {
+    var goTodayTrigger: Int = 0   // 点「今日」Tab 时 +1 → 滚回今日
+
     @Environment(\.modelContext) private var ctx
     @Query(sort: \TimeBlock.start, order: .forward) private var allBlocks: [TimeBlock]
     @Query private var customCats: [CustomCategory]
@@ -147,6 +149,7 @@ struct TimelineView: View {
                     }
                 }
                 .onAppear { setupIfNeeded(proxy) }
+                .onChange(of: goTodayTrigger) { _, _ in goToDay(.now) }
             }
             .navigationTitle(selectionMode ? "已选 \(totalSelected)" : "今日")
             .navigationBarTitleDisplayMode(.inline)
