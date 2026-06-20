@@ -270,8 +270,13 @@ struct TimelineView: View {
             } else {
                 VStack(spacing: 6) {
                     ForEach(items) { b in
-                        Button { tapBlock(b) } label: { blockCard(b) }
-                            .buttonStyle(.plain)
+                        SwipeBlockRow(leftEnabled: !selectionMode && isInProgress(b),
+                                      rightEnabled: !selectionMode && hasGapBefore(b),
+                                      onLeft: { endNow(b) },
+                                      onRight: { mergeGapBefore(b) }) {
+                            Button { tapBlock(b) } label: { blockCard(b) }
+                                .buttonStyle(.plain)
+                        }
                     }
                 }
             }
@@ -473,6 +478,36 @@ struct TimelineView: View {
         }
     }
 
+    // MARK: - 滑动动作（左滑结束 / 右滑合并前面空闲）
+
+    // 进行中的块（已开始、未结束）才能左滑「立即结束」
+    private func isInProgress(_ b: TimeBlock) -> Bool {
+        let now = Date.now
+        return b.start < now && now < b.end
+    }
+    // 同一天内、结束在本块开始之前、最靠近的那个块
+    private func previousBlock(before b: TimeBlock) -> TimeBlock? {
+        allBlocks.filter { $0.id != b.id && $0.start.isSameDay(as: b.start) && $0.end <= b.start }
+            .max { $0.end < $1.end }
+    }
+    private func hasGapBefore(_ b: TimeBlock) -> Bool {
+        guard let p = previousBlock(before: b) else { return false }
+        return p.end < b.start
+    }
+    // 左滑：把结束时间设为当前时刻（立即结束进行中的块）
+    private func endNow(_ b: TimeBlock) {
+        let now = Date.now
+        guard now > b.start, now < b.end else { return }
+        b.end = now
+        normalize()
+    }
+    // 右滑：把开始时间提前到前一个块的结束，吸收两者之间的空闲（同类同名则被 coalesce 并成一条）
+    private func mergeGapBefore(_ b: TimeBlock) {
+        guard let p = previousBlock(before: b), p.end < b.start else { return }
+        b.start = p.end
+        normalize()
+    }
+
     // MARK: - 跨天拆分（0 点）
 
     // 跨午夜的块按 0 点拆开：原块裁到当天 24:00，其后每天的剩余段另建块（只填空闲、不覆盖已有块）。
@@ -514,5 +549,56 @@ struct TimelineView: View {
             ctx.insert(TimeBlock(start: cursor, end: to,
                                  title: title, category: category, note: note))
         }
+    }
+}
+
+// 块卡片的左右滑动动作（今日是 ScrollView+LazyVStack，没有 List 的 .swipeActions，自己做一个）
+// 左滑露出「结束」、右滑露出「合并空闲」，滑过阈值松手即提交。
+private struct SwipeBlockRow<Content: View>: View {
+    var leftEnabled: Bool
+    var rightEnabled: Bool
+    var onLeft: () -> Void
+    var onRight: () -> Void
+    @ViewBuilder var content: Content
+
+    @State private var dx: CGFloat = 0
+    private let limit: CGFloat = 96
+    private let threshold: CGFloat = 64
+
+    var body: some View {
+        ZStack {
+            if dx < 0 {
+                actionLabel("结束", "stop.circle.fill", .red, alignment: .trailing)
+            } else if dx > 0 {
+                actionLabel("合并空闲", "arrow.up.to.line", .blue, alignment: .leading)
+            }
+            content
+                .offset(x: dx)
+                .gesture(drag)
+        }
+    }
+
+    private var drag: some Gesture {
+        DragGesture(minimumDistance: 12)
+            .onChanged { v in
+                guard abs(v.translation.width) > abs(v.translation.height) else { return }
+                let w = v.translation.width
+                if w < 0 && leftEnabled { dx = max(w, -limit) }
+                else if w > 0 && rightEnabled { dx = min(w, limit) }
+            }
+            .onEnded { _ in
+                let left = dx <= -threshold, right = dx >= threshold
+                withAnimation(.spring(response: 0.25, dampingFraction: 0.85)) { dx = 0 }
+                if left { onLeft() } else if right { onRight() }
+            }
+    }
+
+    private func actionLabel(_ text: String, _ icon: String, _ color: Color, alignment: Alignment) -> some View {
+        RoundedRectangle(cornerRadius: 8).fill(color)
+            .overlay(
+                Label(text, systemImage: icon).font(.caption).foregroundStyle(.white)
+                    .padding(.horizontal, 14),
+                alignment: alignment
+            )
     }
 }
