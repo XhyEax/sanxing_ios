@@ -162,9 +162,7 @@ struct TimelineView: View {
                 .disabled(selectedHours.isEmpty)
                 Spacer()
                 if canMerge {
-                    Button { mergeSelected() } label: {
-                        Label("合并", systemImage: "arrow.triangle.merge")
-                    }
+                    Button("合并") { mergeSelected() }
                     Spacer()
                 }
                 Button(role: .destructive) { deleteSelected() } label: {
