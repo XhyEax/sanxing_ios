@@ -13,6 +13,7 @@ private struct RowFrameKey: PreferenceKey {
 struct TimelineView: View {
     @Environment(\.modelContext) private var ctx
     @Query(sort: \TimeBlock.start, order: .forward) private var allBlocks: [TimeBlock]
+    @Query private var customCats: [CustomCategory]
 
     @State private var selectedDay: Date = .now
     @State private var editing: TimeBlock?
@@ -21,6 +22,7 @@ struct TimelineView: View {
     @State private var selected: Set<PersistentIdentifier> = []   // 选中的已有块
     @State private var selectedHours: Set<Int> = []               // 选中的空闲整点
     @State private var showFillDialog = false
+    @State private var showDatePicker = false
 
     @State private var rowFrames: [Int: CGRect] = [:]
     @State private var dragAnchorHour: Int?
@@ -47,10 +49,8 @@ struct TimelineView: View {
     private var emptyHours: [Int] { visibleHours.filter { blocksStarting(inHour: $0).isEmpty } }
     private var nowHour: Int { Calendar.current.component(.hour, from: .now) }
     private var totalSelected: Int { selected.count + selectedHours.count }
-    private var allSelected: Bool {
-        let n = dayBlocks.count + emptyHours.count
-        return n > 0 && selected.count == dayBlocks.count && selectedHours.count == emptyHours.count
-    }
+    // 全选只针对空闲整点（默认不选已有块）
+    private var allSelected: Bool { !emptyHours.isEmpty && selectedHours.count == emptyHours.count }
     // 仅 1 个块 + 若干空闲被选中 → 可把空闲并入该块（拉长覆盖整段）
     private var canMerge: Bool { selected.count == 1 && !selectedHours.isEmpty }
 
@@ -84,15 +84,56 @@ struct TimelineView: View {
             .navigationTitle(selectionMode ? "已选 \(totalSelected)" : "今日")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar { toolbarContent }
-            .confirmationDialog("填充为", isPresented: $showFillDialog, titleVisibility: .visible) {
-                ForEach(BlockCategory.allCases) { c in
-                    Button(c.name) { fillSelectedHours(with: c) }
+            .sheet(isPresented: $showFillDialog) {
+                NavigationStack {
+                    ScrollView {
+                        CategoryGrid(selectedKey: nil) { key in
+                            fillSelectedHours(with: key)
+                            showFillDialog = false
+                        }
+                        .padding()
+                    }
+                    .navigationTitle("填充为")
+                    .navigationBarTitleDisplayMode(.inline)
+                    .toolbar {
+                        ToolbarItem(placement: .cancellationAction) {
+                            Button("取消") { showFillDialog = false }
+                        }
+                    }
                 }
-                Button("取消", role: .cancel) {}
+                .presentationDetents([.medium, .large])
             }
-            .sheet(item: $newBlock, onDismiss: coalesceAdjacent) { TimeBlockEditorView(day: selectedDay, hour: $0.hour) }
-            .sheet(item: $editing, onDismiss: coalesceAdjacent) { TimeBlockEditorView(block: $0) }
+            .sheet(item: $newBlock, onDismiss: afterEdit) { TimeBlockEditorView(day: selectedDay, hour: $0.hour) }
+            .sheet(item: $editing, onDismiss: afterEdit) { TimeBlockEditorView(block: $0) }
+            .sheet(isPresented: $showDatePicker) {
+                NavigationStack {
+                    VStack {
+                        DatePicker("跳转到", selection: $selectedDay, displayedComponents: .date)
+                            .datePickerStyle(.graphical)
+                            .environment(\.locale, Locale(identifier: "zh_CN"))
+                            .padding()
+                        Spacer()
+                    }
+                    .navigationTitle("选择日期")
+                    .navigationBarTitleDisplayMode(.inline)
+                    .toolbar {
+                        ToolbarItem(placement: .topBarLeading) {
+                            Button("今天") { selectedDay = .now }
+                        }
+                        ToolbarItem(placement: .confirmationAction) {
+                            Button("完成") { showDatePicker = false }
+                        }
+                    }
+                }
+                .presentationDetents([.medium, .large])
+            }
         }
+    }
+
+    // 编辑器关闭后：先按天复制跨天块，再合并相邻同类块
+    private func afterEdit() {
+        propagateCrossDay()
+        coalesceAdjacent()
     }
 
     private var header: some View {
@@ -132,6 +173,9 @@ struct TimelineView: View {
                 .disabled(selected.isEmpty)
             }
         } else {
+            ToolbarItem(placement: .navigationBarLeading) {
+                Button { showDatePicker = true } label: { Image(systemName: "calendar") }
+            }
             ToolbarItem(placement: .principal) { dayNav }
             ToolbarItem(placement: .navigationBarTrailing) {
                 Button("选择") { selectionMode = true }
@@ -190,16 +234,17 @@ struct TimelineView: View {
 
     private func blockCard(_ b: TimeBlock) -> some View {
         let isSel = selected.contains(b.id)
+        let s = catStyle(for: b.category, custom: customCats)
         return HStack(spacing: 10) {
             if selectionMode {
                 Image(systemName: isSel ? "checkmark.circle.fill" : "circle")
                     .foregroundStyle(isSel ? Color.accentColor : .secondary)
             }
-            RoundedRectangle(cornerRadius: 3).fill(b.cat.color).frame(width: 5)
+            RoundedRectangle(cornerRadius: 3).fill(s.color).frame(width: 5)
             VStack(alignment: .leading, spacing: 3) {
-                Text(b.title.isEmpty ? b.cat.name : b.title).font(.subheadline)
+                Text(b.title.isEmpty ? s.name : b.title).font(.subheadline)
                 HStack(spacing: 6) {
-                    Label(b.cat.name, systemImage: b.cat.icon).font(.caption2).foregroundStyle(b.cat.color)
+                    Label(s.name, systemImage: s.icon).font(.caption2).foregroundStyle(s.color)
                     Text("· \(b.start.hm)-\(b.end.hm) · \(formatDuration(b.duration))")
                         .font(.caption2).foregroundStyle(.secondary)
                         .lineLimit(1)
@@ -209,7 +254,7 @@ struct TimelineView: View {
         }
         .padding(.vertical, 8).padding(.horizontal, 10)
         .frame(maxWidth: .infinity)
-        .background((isSel ? b.cat.color.opacity(0.20) : b.cat.color.opacity(0.10)),
+        .background((isSel ? s.color.opacity(0.20) : s.color.opacity(0.10)),
                     in: RoundedRectangle(cornerRadius: 8))
     }
 
@@ -275,11 +320,8 @@ struct TimelineView: View {
         if selectedHours.contains(h) { selectedHours.remove(h) } else { selectedHours.insert(h) }
     }
     private func toggleSelectAll() {
-        if allSelected {
-            selected.removeAll(); selectedHours.removeAll()
-        } else {
-            selected = Set(dayBlocks.map { $0.id }); selectedHours = Set(emptyHours)
-        }
+        // 全选/取消全选只覆盖空闲整点，保留用户手动选中的块
+        if allSelected { selectedHours.removeAll() } else { selectedHours = Set(emptyHours) }
     }
     private func exitSelection() {
         selectionMode = false; selected.removeAll(); selectedHours.removeAll(); dragAnchorHour = nil
@@ -305,13 +347,13 @@ struct TimelineView: View {
         exitSelection()
     }
 
-    private func fillSelectedHours(with cat: BlockCategory) {
+    private func fillSelectedHours(with key: String) {
         let cal = Calendar.current
         for h in selectedHours {
             let start = cal.date(bySettingHour: h, minute: 0, second: 0, of: selectedDay.startOfDay)
                 ?? selectedDay.startOfDay
             ctx.insert(TimeBlock(start: start, end: start.addingTimeInterval(3600),
-                                 title: "", category: cat.rawValue))
+                                 title: "", category: key))
         }
         coalesceAdjacent()
         exitSelection()
@@ -329,6 +371,48 @@ struct TimelineView: View {
             } else {
                 prev = b
             }
+        }
+    }
+
+    // MARK: - 跨天复制
+
+    // 跨午夜的块，在其后每个被覆盖的日子里按「空闲时段」复制一份同类块；
+    // 只填空闲、不覆盖已有块（次日已有块则跳过）。幂等：副本本身不跨天，重跑时旧副本已占槽自动跳过。
+    private func propagateCrossDay() {
+        let snapshot = allBlocks               // 快照，避免边遍历边插入
+        for b in snapshot {
+            let firstMidnight = b.start.startOfDay.addingDays(1)   // 起始日之后的第一个午夜
+            guard b.end > firstMidnight else { continue }          // 不跨天则跳过
+            var dayStart = firstMidnight
+            while dayStart < b.end {
+                let dayEnd = dayStart.addingDays(1)
+                copyIntoFreeSlots(category: b.category, title: b.title, note: b.note,
+                                  from: dayStart, to: min(b.end, dayEnd),
+                                  existing: snapshot, skip: b.id)
+                dayStart = dayEnd
+            }
+        }
+    }
+
+    // 在 [from, to) 内，挖掉与已有块（skip 除外）重叠的部分，对每段剩余空闲插入同类块
+    private func copyIntoFreeSlots(category: String, title: String, note: String,
+                                   from: Date, to: Date,
+                                   existing: [TimeBlock], skip: PersistentIdentifier) {
+        let busy = existing
+            .filter { $0.id != skip && $0.end > from && $0.start < to }
+            .map { (start: max($0.start, from), end: min($0.end, to)) }
+            .sorted { $0.start < $1.start }
+        var cursor = from
+        for seg in busy {
+            if seg.start > cursor {
+                ctx.insert(TimeBlock(start: cursor, end: seg.start,
+                                     title: title, category: category, note: note))
+            }
+            cursor = max(cursor, seg.end)
+        }
+        if cursor < to {
+            ctx.insert(TimeBlock(start: cursor, end: to,
+                                 title: title, category: category, note: note))
         }
     }
 }
