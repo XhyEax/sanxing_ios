@@ -49,7 +49,14 @@ struct TimelineView: View {
     @State private var dayCache = DayBlocksCache()
     @State private var shareImage: UIImage?
     @State private var showShare = false
+    @AppStorage("appColorScheme") private var colorSchemeIndex = 0
+    @Environment(\.colorScheme) private var systemScheme
     private let cal = Calendar.current
+
+    // 当前生效的明暗（跟随设置：0 系统 / 1 浅 / 2 深）
+    private var effectiveScheme: ColorScheme {
+        switch colorSchemeIndex { case 1: return .light; case 2: return .dark; default: return systemScheme }
+    }
 
     private struct NewBlock: Identifiable { let start: Date; let end: Date; var id: Date { start } }
     private struct OverlapPair: Identifiable { let id = UUID(); let earlier: TimeBlock; let later: TimeBlock }
@@ -362,8 +369,10 @@ struct TimelineView: View {
     private func shareScreenshot() {
         let data = shareItems()
         guard !data.items.isEmpty else { return }
-        let renderer = ImageRenderer(content: DayShareView(title: data.title, items: data.items))
-        renderer.scale = UIScreen.main.scale
+        let renderer = ImageRenderer(
+            content: DayShareView(title: data.title, items: data.items)
+                .environment(\.colorScheme, effectiveScheme))   // 跟随主题
+        renderer.scale = 2   // 2x 够清晰、比 3x 快
         shareImage = renderer.uiImage
         if shareImage != nil { showShare = true }
     }
