@@ -306,7 +306,8 @@ struct TimelineView: View {
             ToolbarItem(placement: .navigationBarLeading) {
                 Button(allSelected ? "取消全选" : "全选") { toggleSelectAll() }
             }
-            ToolbarItem(placement: .navigationBarTrailing) {
+            ToolbarItemGroup(placement: .navigationBarTrailing) {
+                Button { shareScreenshot() } label: { Image(systemName: "square.and.arrow.up") }
                 Button("完成") { exitSelection() }
             }
             ToolbarItemGroup(placement: .bottomBar) {
