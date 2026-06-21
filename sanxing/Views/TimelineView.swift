@@ -416,20 +416,21 @@ struct TimelineView: View {
         return Button {
             if selectionMode { toggleIdle(r) } else { newBlock = NewBlock(start: s, end: e) }
         } label: {
-            HStack {
+            HStack(spacing: 6) {
                 if selectionMode {
                     Image(systemName: isSel ? "checkmark.circle.fill" : "circle")
+                        .font(.caption)
                         .foregroundStyle(isSel ? Color.accentColor : .secondary)
                 }
-                Text("空闲").font(.subheadline).foregroundStyle(.tertiary)
+                Text("空闲").font(.caption2).foregroundStyle(.tertiary)
                 Text(formatDuration(e.timeIntervalSince(s))).font(.caption2).foregroundStyle(.quaternary)
                 Spacer()
-                if !selectionMode { Image(systemName: "plus").font(.caption).foregroundStyle(.tertiary) }
+                if !selectionMode { Image(systemName: "plus").font(.caption2).foregroundStyle(.tertiary) }
             }
-            .padding(.vertical, 10).padding(.horizontal, 12)
+            .padding(.vertical, 4).padding(.horizontal, 12)
             .frame(maxWidth: .infinity)
-            .background((isSel ? Color.accentColor.opacity(0.12) : Color.secondary.opacity(0.06)),
-                        in: RoundedRectangle(cornerRadius: 8))
+            .background((isSel ? Color.accentColor.opacity(0.12) : Color.secondary.opacity(0.04)),
+                        in: RoundedRectangle(cornerRadius: 6))
         }
         .buttonStyle(.plain)
     }
