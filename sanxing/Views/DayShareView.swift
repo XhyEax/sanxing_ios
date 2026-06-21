@@ -2,13 +2,14 @@
 import SwiftUI
 import UIKit
 
-// 一行：块（带分类色）或空闲（color == nil）
+// 一行：天分隔标题（dayHeader 非空）/ 块（带分类色）/ 空闲（color == nil）
 struct ShareItem: Identifiable {
     let id = UUID()
-    let time: String
-    let title: String
-    let sub: String
-    let color: Color?
+    var dayHeader: String? = nil
+    var time: String = ""
+    var title: String = ""
+    var sub: String = ""
+    var color: Color? = nil
 }
 
 // 渲染成图的日程视图（固定宽度，便于导出）
@@ -17,10 +18,14 @@ struct DayShareView: View {
     let items: [ShareItem]
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 10) {
+        VStack(alignment: .leading, spacing: 8) {
             Text(title).font(.headline)
-            VStack(alignment: .leading, spacing: 8) {
-                ForEach(items) { it in
+            ForEach(items) { it in
+                if let dh = it.dayHeader {
+                    Text(dh).font(.subheadline).bold()
+                        .foregroundStyle(.secondary)
+                        .padding(.top, 8)
+                } else {
                     HStack(alignment: .top, spacing: 10) {
                         Text(it.time).font(.caption).monospacedDigit()
                             .foregroundStyle(.secondary)
@@ -39,7 +44,7 @@ struct DayShareView: View {
                     }
                 }
             }
-            Text("三省小记").font(.caption2).foregroundStyle(.tertiary)
+            Text("三省小记").font(.caption2).foregroundStyle(.tertiary).padding(.top, 4)
         }
         .padding(18)
         .frame(width: 360, alignment: .leading)

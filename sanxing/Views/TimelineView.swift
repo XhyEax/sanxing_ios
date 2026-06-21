@@ -43,6 +43,7 @@ struct TimelineView: View {
     @State private var datePickerDay = Date.now
 
     @State private var rowFrames: [Date: CGRect] = [:]
+    @State private var dayFrames: [Date: CGRect] = [:]   // 各天 header 在视口中的位置（判可见天）
     @State private var dragAnchor: Date?
     @State private var scrollTarget: String?        // 顶部导航跳转目标（dayHeaderID）
     @State private var overlap: OverlapPair?        // 编辑后检测到的重叠，弹窗让用户选择如何处理
@@ -168,7 +169,7 @@ struct TimelineView: View {
                 }
                 .coordinateSpace(name: "timeline")
                 .onPreferenceChange(RowFrameKey.self) { rowFrames = $0 }
-                .onPreferenceChange(DayFrameKey.self) { updateFocusedDay($0) }
+                .onPreferenceChange(DayFrameKey.self) { dayFrames = $0; updateFocusedDay($0) }
                 .highPriorityGesture(selectDragGesture)
                 .onChange(of: scrollTarget) { _, t in
                     guard let t else { return }
@@ -380,31 +381,43 @@ struct TimelineView: View {
         }
     }
 
+    // 当前屏幕里可见的天（按 header 在视口中的位置；含被上方块覆盖到顶部的那天）
+    private func visibleDays() -> [Date] {
+        let vh = UIScreen.main.bounds.height
+        var result: [Date] = []
+        for (i, d) in days.enumerated() {
+            guard let top = dayFrames[d]?.minY else { continue }
+            let bottom = (i + 1 < days.count ? dayFrames[days[i + 1]]?.minY : nil) ?? .greatestFiniteMagnitude
+            if top < vh && bottom > 0 { result.append(d) }   // 该天区段与视口相交
+        }
+        return result
+    }
+
+    private func shareRow(_ item: HourItem) -> ShareItem {
+        switch item {
+        case .block(let b):
+            let s = catStyle(for: b.category, custom: customCats)
+            return ShareItem(time: clock(b.start), title: b.title.isEmpty ? s.name : b.title,
+                             sub: "\(clock(b.start))-\(clock(b.end)) · \(formatDuration(b.duration))", color: s.color)
+        case .idle(let st, let e):
+            return ShareItem(time: clock(st), title: "空闲", sub: formatDuration(e.timeIntervalSince(st)), color: nil)
+        case .empty(let hs):
+            return ShareItem(time: clock(hs), title: "空闲", sub: "1小时", color: nil)
+        }
+    }
+
+    // 当前屏幕显示的块（跨天则多天都含），每天首块…末块、丢前后空闲
     private func shareItems() -> (title: String, items: [ShareItem]) {
-        let day = focusedDay
-        let title = day.isSameDay(as: .now) ? "今天 · \(day.dayTitle)" : day.dayTitle
-        let raw = visibleHourStarts(of: day).flatMap { hourItems($0) }
         func isBlock(_ i: HourItem) -> Bool { if case .block = i { return true }; return false }
-        guard let f = raw.firstIndex(where: isBlock), let l = raw.lastIndex(where: isBlock) else {
-            return (title, [])   // 当天没有块（全是空闲）→ 空
-        }
+        let vds = visibleDays()
         var out: [ShareItem] = []
-        for item in raw[f...l] {     // 只取首块到末块，丢掉前后的空闲
-            switch item {
-            case .block(let b):
-                let s = catStyle(for: b.category, custom: customCats)
-                out.append(ShareItem(time: clock(b.start),
-                                     title: b.title.isEmpty ? s.name : b.title,
-                                     sub: "\(clock(b.start))-\(clock(b.end)) · \(formatDuration(b.duration))",
-                                     color: s.color))
-            case .idle(let st, let e):
-                out.append(ShareItem(time: clock(st), title: "空闲",
-                                     sub: formatDuration(e.timeIntervalSince(st)), color: nil))
-            case .empty(let hs):
-                out.append(ShareItem(time: clock(hs), title: "空闲", sub: "1小时", color: nil))
-            }
+        for day in vds {
+            let raw = visibleHourStarts(of: day).flatMap { hourItems($0) }
+            guard let f = raw.firstIndex(where: isBlock), let l = raw.lastIndex(where: isBlock) else { continue }
+            out.append(ShareItem(dayHeader: day.isSameDay(as: .now) ? "今天 · \(day.dayTitle)" : day.dayTitle))
+            for item in raw[f...l] { out.append(shareRow(item)) }
         }
-        return (title, out)
+        return ("三省小记 · 时间轴", out)
     }
 
     // MARK: - 行
