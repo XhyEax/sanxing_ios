@@ -49,25 +49,33 @@ struct DayShareView: View {
 
 // 预览 + 分享面板：先看到生成的图，再点「分享」走系统分享
 struct SharePreviewSheet: View {
-    let image: UIImage
+    let image: UIImage?     // nil = 渲染中
     @Environment(\.dismiss) private var dismiss
 
     var body: some View {
         NavigationStack {
-            ScrollView {
-                Image(uiImage: image)
-                    .resizable().scaledToFit()
-                    .frame(maxWidth: .infinity)
-                    .padding()
+            Group {
+                if let image {
+                    ScrollView {
+                        Image(uiImage: image)
+                            .resizable().scaledToFit()
+                            .frame(maxWidth: .infinity)
+                            .padding()
+                    }
+                } else {
+                    ProgressView("生成中…").frame(maxWidth: .infinity, maxHeight: .infinity)
+                }
             }
             .navigationTitle("分享预览")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) { Button("取消") { dismiss() } }
-                ToolbarItem(placement: .confirmationAction) {
-                    ShareLink(item: Image(uiImage: image),
-                              preview: SharePreview("时间轴", image: Image(uiImage: image))) {
-                        Text("分享")
+                if let image {
+                    ToolbarItem(placement: .confirmationAction) {
+                        ShareLink(item: Image(uiImage: image),
+                                  preview: SharePreview("时间轴", image: Image(uiImage: image))) {
+                            Text("分享")
+                        }
                     }
                 }
             }

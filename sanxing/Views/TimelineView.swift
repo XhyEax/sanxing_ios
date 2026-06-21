@@ -238,7 +238,7 @@ struct TimelineView: View {
                 .presentationDetents([.medium, .large])
             }
             .sheet(isPresented: $showShare) {
-                if let img = shareImage { SharePreviewSheet(image: img) }
+                SharePreviewSheet(image: shareImage)
             }
         }
     }
@@ -369,12 +369,15 @@ struct TimelineView: View {
     private func shareScreenshot() {
         let data = shareItems()
         guard !data.items.isEmpty else { return }
-        let renderer = ImageRenderer(
-            content: DayShareView(title: data.title, items: data.items)
-                .environment(\.colorScheme, effectiveScheme))   // 跟随主题
-        renderer.scale = 2   // 2x 够清晰、比 3x 快
-        shareImage = renderer.uiImage
-        if shareImage != nil { showShare = true }
+        shareImage = nil
+        showShare = true     // 先弹预览（转圈），随后渲染出图，避免按下去卡住
+        DispatchQueue.main.async {
+            let renderer = ImageRenderer(
+                content: DayShareView(title: data.title, items: data.items)
+                    .environment(\.colorScheme, effectiveScheme))   // 跟随主题
+            renderer.scale = 2   // 2x 够清晰、比 3x 快
+            shareImage = renderer.uiImage
+        }
     }
 
     private func shareItems() -> (title: String, items: [ShareItem]) {
