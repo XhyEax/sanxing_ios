@@ -546,13 +546,17 @@ struct TimelineView: View {
                 guard case .second(true, let drag?) = value else { return }
                 if !selectionMode {
                     selectionMode = true
-                    selected.removeAll(); selectedHourStarts.removeAll()
+                    selected.removeAll(); selectedHourStarts.removeAll(); selectedIdle.removeAll()
                 }
                 guard let hs = hourStart(at: drag.location) else { return }
                 if dragAnchor == nil { dragAnchor = hs }
                 selectRange(from: dragAnchor ?? hs, to: hs)
             }
-            .onEnded { _ in dragAnchor = nil }
+            .onEnded { _ in
+                dragAnchor = nil
+                // 选中的全是空闲（没有块）→ 直接弹分类/事件选择填充
+                if selected.isEmpty && selectedIdleCount > 0 { showFillDialog = true }
+            }
     }
 
     private func hourStart(at point: CGPoint) -> Date? {
