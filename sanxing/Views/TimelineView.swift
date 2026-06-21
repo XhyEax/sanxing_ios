@@ -144,7 +144,7 @@ struct TimelineView: View {
                 .onChange(of: scrollTarget) { _, t in
                     guard let t else { return }
                     DispatchQueue.main.async {
-                        withAnimation { proxy.scrollTo(t, anchor: .top) }
+                        proxy.scrollTo(t, anchor: .top)   // 不加动画：避免从窗口顶部(~31天前)一路滚下来的观感
                         scrollTarget = nil
                     }
                 }
