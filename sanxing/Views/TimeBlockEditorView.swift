@@ -102,8 +102,14 @@ struct TimeBlockEditorView: View {
             .navigationTitle(existing == nil ? "新建时间块" : "编辑时间块")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
-                ToolbarItem(placement: .cancellationAction) {
+                ToolbarItemGroup(placement: .topBarLeading) {
                     Button("取消") { dismiss() }
+                    // 终止：把结束时间设为当前时刻
+                    Button { if Date.now > start { end = Date.now } } label: {
+                        Image(systemName: "stop.circle")
+                    }
+                    .tint(.red)
+                    .disabled(Date.now <= start)
                 }
                 ToolbarItemGroup(placement: .topBarTrailing) {
                     if existing != nil {
