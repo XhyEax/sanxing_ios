@@ -122,7 +122,7 @@ sanxing/
 
 - **进入多选**：右上「选择」按钮，或**长按任意行**（`LongPressGesture(0.3).sequenced(before: DragGesture)`）。长按后不抬手**上下滑动**连续选中（以长按行为锚点，选锚点→当前行的范围）。快速点按（<0.3s）不触发选择，仍是编辑块/新建空闲。
 - 拖拽命中靠每行上报 frame（`RowFrameKey: [Date:CGRect]` + `.coordinateSpace(name:"timeline")`），`hourStart(at:)` 按 y 命中；`selectRange` 在 `allVisibleHourStarts`（窗口内全部可见 hour-start，升序）里取子区间，**可跨天**。
-- **滚动性能**：逐行 `RowFrameKey` **仅在多选态上报**（普通滚动不上报，避免「preference updated multiple times per frame」卡顿）；`focusedDay` 改由每天 1 个的 `DayFrameKey`（天 header frame）跟踪，比逐行便宜得多。
+- **滚动性能**：① 逐行 `RowFrameKey` **仅在多选态上报**（普通滚动不上报，避免「preference updated multiple times per frame」卡顿）；`focusedDay` 改由每天 1 个的 `DayFrameKey`（天 header frame）跟踪。② **按天分组缓存** `DayBlocksCache`（引用类型）：`body` 求值时 `Dictionary(grouping: allBlocks) { cal.startOfDay(...) }` 整体重建一次，`dayBlocks/blocksStarting/coveringBlock` 改为字典查找 + 在当天小数组上 filter，不再每行 `filter` 整个 `allBlocks`（消除 O(行×块) 的 `isSameDay`）。
 - 三套选中集：`selected`（真实块）、`selectedHourStarts: Set<Date>`（空闲整点，支持长按拖拽范围选）、`selectedIdle: Set<IdleRange>`（块之间的小空闲段，多选态点按勾选）。「填充」对两类空闲都建块（整点 1h、小空闲按精确起止）；`mergeSelected` 把选中的整点+小空闲并入唯一块；全选覆盖 `focusedDay` 的整点空闲 + 小空闲段。
 - 底部工具栏（多选态，`.bottomBar`）按上下文出现：
   - **填充**：选中空闲整点 → 弹 `CategoryGrid` 选分类后各建 1 小时块（`fillSelectedHours(with: key)`）。

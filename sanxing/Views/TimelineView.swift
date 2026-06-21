@@ -18,6 +18,10 @@ private struct DayFrameKey: PreferenceKey {
     }
 }
 
+// 按天分组的块缓存：每次 body 求值时整体重建一次，渲染期各行只做字典查找，
+// 不再每行 filter 整个 allBlocks（引用类型，重建不触发额外刷新）
+private final class DayBlocksCache { var byDay: [Date: [TimeBlock]] = [:] }
+
 struct TimelineView: View {
     var goTodayTrigger: Int = 0   // 点「今日」Tab 时 +1 → 滚回今日
 
@@ -41,6 +45,8 @@ struct TimelineView: View {
     @State private var dragAnchor: Date?
     @State private var scrollTarget: String?        // 顶部导航跳转目标（dayHeaderID）
     @State private var overlap: OverlapPair?        // 编辑后检测到的重叠，弹窗让用户选择如何处理
+    @State private var dayCache = DayBlocksCache()
+    private let cal = Calendar.current
 
     private struct NewBlock: Identifiable { let start: Date; let end: Date; var id: Date { start } }
     private struct OverlapPair: Identifiable { let id = UUID(); let earlier: TimeBlock; let later: TimeBlock }
@@ -48,22 +54,20 @@ struct TimelineView: View {
 
     // MARK: - 取数（按天 / 按 hour-start）
 
+    // 当天的块（从按天分组缓存里取，避免每行 filter 整个 allBlocks）
     private func dayBlocks(of day: Date) -> [TimeBlock] {
-        allBlocks.filter { $0.start.isSameDay(as: day) }
+        dayCache.byDay[cal.startOfDay(for: day)] ?? []
     }
     // 在该整点起始的块
     private func blocksStarting(at hs: Date) -> [TimeBlock] {
-        let cal = Calendar.current
         let h = cal.component(.hour, from: hs)
-        return allBlocks.filter { $0.start.isSameDay(as: hs) && cal.component(.hour, from: $0.start) == h }
+        return dayBlocks(of: hs).filter { cal.component(.hour, from: $0.start) == h }
     }
     // 在更早整点起始、却延伸覆盖此整点的多小时块（同一天内）→ 该整点不单独成行
     private func coveringBlock(at hs: Date) -> TimeBlock? {
-        let cal = Calendar.current
         let h = cal.component(.hour, from: hs)
-        return allBlocks.first {
-            $0.start.isSameDay(as: hs) && cal.component(.hour, from: $0.start) != h
-                && $0.start <= hs && $0.end > hs
+        return dayBlocks(of: hs).first {
+            cal.component(.hour, from: $0.start) != h && $0.start <= hs && $0.end > hs
         }
     }
     private func hourStarts(of day: Date) -> [Date] {
@@ -125,7 +129,8 @@ struct TimelineView: View {
     // MARK: - Body
 
     var body: some View {
-        NavigationStack {
+        dayCache.byDay = Dictionary(grouping: allBlocks) { cal.startOfDay(for: $0.start) }   // 每次渲染重建一次
+        return NavigationStack {
             ScrollViewReader { proxy in
                 ScrollView {
                     LazyVStack(spacing: 0) {
