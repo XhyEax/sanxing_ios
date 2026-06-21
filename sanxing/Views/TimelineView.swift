@@ -1,6 +1,7 @@
 // Views/TimelineView.swift — 今日：多天无缝纵向滚动；整点 1 小时块；点选 + 长按拖拽多选
 import SwiftUI
 import SwiftData
+import UIKit
 
 // 各整点行 frame（仅多选态上报，用于拖拽命中）
 private struct RowFrameKey: PreferenceKey {
@@ -46,6 +47,8 @@ struct TimelineView: View {
     @State private var scrollTarget: String?        // 顶部导航跳转目标（dayHeaderID）
     @State private var overlap: OverlapPair?        // 编辑后检测到的重叠，弹窗让用户选择如何处理
     @State private var dayCache = DayBlocksCache()
+    @State private var shareImage: UIImage?
+    @State private var showShare = false
     private let cal = Calendar.current
 
     private struct NewBlock: Identifiable { let start: Date; let end: Date; var id: Date { start } }
@@ -227,6 +230,9 @@ struct TimelineView: View {
                 }
                 .presentationDetents([.medium, .large])
             }
+            .sheet(isPresented: $showShare) {
+                if let img = shareImage { ActivityView(items: [img]) }
+            }
         }
     }
 
@@ -344,10 +350,17 @@ struct TimelineView: View {
                 }
             }
             ToolbarItem(placement: .principal) { dayNav }
-            ToolbarItem(placement: .navigationBarTrailing) {
+            ToolbarItemGroup(placement: .navigationBarTrailing) {
+                Button { shareScreenshot() } label: { Image(systemName: "square.and.arrow.up") }
                 Button("选择") { selectionMode = true }
             }
         }
+    }
+
+    // 截当前屏幕并分享
+    private func shareScreenshot() {
+        shareImage = captureWindowImage()
+        if shareImage != nil { showShare = true }
     }
 
     // MARK: - 行
@@ -840,4 +853,23 @@ struct TimelineView: View {
                                  title: title, category: category, note: note))
         }
     }
+
+    // 截取当前 key window 的整屏图像
+    private func captureWindowImage() -> UIImage? {
+        guard let window = UIApplication.shared.connectedScenes
+            .compactMap({ $0 as? UIWindowScene })
+            .flatMap({ $0.windows })
+            .first(where: { $0.isKeyWindow }) else { return nil }
+        let renderer = UIGraphicsImageRenderer(bounds: window.bounds)
+        return renderer.image { _ in window.drawHierarchy(in: window.bounds, afterScreenUpdates: false) }
+    }
+}
+
+// 系统分享面板（UIActivityViewController 包装）
+private struct ActivityView: UIViewControllerRepresentable {
+    let items: [Any]
+    func makeUIViewController(context: Context) -> UIActivityViewController {
+        UIActivityViewController(activityItems: items, applicationActivities: nil)
+    }
+    func updateUIViewController(_ vc: UIActivityViewController, context: Context) {}
 }
