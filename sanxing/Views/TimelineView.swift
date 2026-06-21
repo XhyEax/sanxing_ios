@@ -400,17 +400,21 @@ struct TimelineView: View {
     private func itemRow(_ item: HourItem) -> some View {
         switch item {
         case .empty(let hs):
-            timeLabeledRow(time: hs, isNow: isNowIn(hs, hs.addingTimeInterval(3600))) {
+            timeLabeledRow(leading: { plainLeading(hs, isNow: isNowIn(hs, hs.addingTimeInterval(3600))) }) {
                 emptySlot(hs)
             }
         case .block(let b):
-            // 普通态：左侧时间是个菜单（合并上/下方空闲、起止改为现在）
-            timeLabeledRow(time: b.start, isNow: isNowIn(b.start, b.end),
-                           menuBlock: selectionMode ? nil : b) {
+            timeLabeledRow(leading: {
+                leadingTimeMenu(b.start, isNow: isNowIn(b.start, b.end)) { blockTimeMenu(b) }
+            }) {
                 Button { tapBlock(b) } label: { blockCard(b) }.buttonStyle(.plain)
             }
         case .idle(let s, let e):
-            timeLabeledRow(time: s, isNow: isNowIn(s, e)) { idleGap(s, e) }
+            timeLabeledRow(leading: {
+                leadingTimeMenu(s, isNow: isNowIn(s, e)) { idleTimeMenu(s, e) }
+            }) {
+                idleGap(s, e)
+            }
         }
     }
 
@@ -424,7 +428,29 @@ struct TimelineView: View {
             .foregroundStyle(isNow ? Color.accentColor : .secondary)
     }
 
-    // 块左侧时间点按弹出的菜单
+    // 左侧时间列（普通态，无菜单）：撑满整行高度
+    private func plainLeading(_ time: Date, isNow: Bool) -> some View {
+        timeText(time, isNow: isNow)
+            .frame(minWidth: 44, maxHeight: .infinity, alignment: .topLeading)
+            .padding(.top, 8)
+    }
+
+    // 左侧时间列做菜单触发：触发区 = 时间 + 下方空白（整个 block 左侧）。多选态退回纯文字。
+    @ViewBuilder
+    private func leadingTimeMenu<M: View>(_ time: Date, isNow: Bool, @ViewBuilder menu: () -> M) -> some View {
+        if selectionMode {
+            plainLeading(time, isNow: isNow)
+        } else {
+            Menu { menu() } label: {
+                timeText(time, isNow: isNow)
+                    .frame(minWidth: 44, maxHeight: .infinity, alignment: .topLeading)
+                    .padding(.top, 8)
+                    .contentShape(Rectangle())
+            }
+        }
+    }
+
+    // 块左侧时间菜单
     @ViewBuilder
     private func blockTimeMenu(_ b: TimeBlock) -> some View {
         if hasGapBefore(b) {
@@ -441,18 +467,28 @@ struct TimelineView: View {
         }
     }
 
-    private func timeLabeledRow<C: View>(time: Date, isNow: Bool, menuBlock: TimeBlock? = nil,
-                                         @ViewBuilder content: () -> C) -> some View {
+    // 空闲段左侧时间菜单：并入上/下方块
+    @ViewBuilder
+    private func idleTimeMenu(_ s: Date, _ e: Date) -> some View {
+        if let p = blockEndingAt(s) {
+            Button { p.end = max(p.end, e); afterEdit() } label: { Label("并入上方", systemImage: "arrow.up.to.line") }
+        }
+        if let n = blockStartingAt(e) {
+            Button { n.start = min(n.start, s); afterEdit() } label: { Label("并入下方", systemImage: "arrow.down.to.line") }
+        }
+        Button { newBlock = NewBlock(start: s, end: e) } label: { Label("新建块", systemImage: "plus") }
+    }
+    private func blockEndingAt(_ t: Date) -> TimeBlock? {
+        allBlocks.first { $0.end == t && $0.start.isSameDay(as: t) }
+    }
+    private func blockStartingAt(_ t: Date) -> TimeBlock? {
+        allBlocks.first { $0.start == t && $0.start.isSameDay(as: t) }
+    }
+
+    private func timeLabeledRow<L: View, C: View>(@ViewBuilder leading: () -> L,
+                                                  @ViewBuilder content: () -> C) -> some View {
         HStack(alignment: .top, spacing: 10) {
-            Group {
-                if let b = menuBlock {
-                    Menu { blockTimeMenu(b) } label: { timeText(time, isNow: isNow) }
-                } else {
-                    timeText(time, isNow: isNow)
-                }
-            }
-            .frame(minWidth: 44, alignment: .leading)
-            .padding(.top, 8)
+            leading()
             content()
         }
     }
