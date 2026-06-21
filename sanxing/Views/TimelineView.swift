@@ -2,8 +2,16 @@
 import SwiftUI
 import SwiftData
 
-// 记录各整点行（按 hour-start Date）在时间轴坐标系中的 frame，用于拖拽命中 + 焦点天跟踪
+// 各整点行 frame（仅多选态上报，用于拖拽命中）
 private struct RowFrameKey: PreferenceKey {
+    static var defaultValue: [Date: CGRect] = [:]
+    static func reduce(value: inout [Date: CGRect], nextValue: () -> [Date: CGRect]) {
+        value.merge(nextValue()) { _, new in new }
+    }
+}
+
+// 各天 header frame（始终上报，但每天仅 1 个，用于跟踪焦点天，比逐行上报便宜得多）
+private struct DayFrameKey: PreferenceKey {
     static var defaultValue: [Date: CGRect] = [:]
     static func reduce(value: inout [Date: CGRect], nextValue: () -> [Date: CGRect]) {
         value.merge(nextValue()) { _, new in new }
@@ -123,23 +131,29 @@ struct TimelineView: View {
                     LazyVStack(spacing: 0) {
                         ForEach(days, id: \.self) { day in
                             dayHeader(day)
+                                .background(GeometryReader { geo in
+                                    Color.clear.preference(key: DayFrameKey.self,
+                                        value: [day: geo.frame(in: .named("timeline"))])
+                                })
                             ForEach(visibleHourStarts(of: day), id: \.self) { hs in
                                 hourRow(hs)
                                     .id(hs)
-                                    .background(GeometryReader { geo in
-                                        Color.clear.preference(key: RowFrameKey.self,
-                                            value: [hs: geo.frame(in: .named("timeline"))])
-                                    })
+                                    .background {
+                                        if selectionMode {   // 仅多选态上报行 frame（拖拽命中），普通滚动不上报
+                                            GeometryReader { geo in
+                                                Color.clear.preference(key: RowFrameKey.self,
+                                                    value: [hs: geo.frame(in: .named("timeline"))])
+                                            }
+                                        }
+                                    }
                             }
                         }
                     }
                     .padding(.horizontal)
                 }
                 .coordinateSpace(name: "timeline")
-                .onPreferenceChange(RowFrameKey.self) { frames in
-                    rowFrames = frames
-                    updateFocusedDay(frames)
-                }
+                .onPreferenceChange(RowFrameKey.self) { rowFrames = $0 }
+                .onPreferenceChange(DayFrameKey.self) { updateFocusedDay($0) }
                 .highPriorityGesture(selectDragGesture)
                 .onChange(of: scrollTarget) { _, t in
                     guard let t else { return }
@@ -516,14 +530,12 @@ struct TimelineView: View {
         if let target { DispatchQueue.main.async { proxy.scrollTo(target, anchor: .top) } }
     }
 
-    // 顶部贴近视口的那一行所属天 → focusedDay
-    private func updateFocusedDay(_ frames: [Date: CGRect]) {
-        let crossing = frames.first { $0.value.minY <= 1 && $0.value.maxY > 1 }?.key
-        let fallback = frames.filter { $0.value.minY >= 0 }.min { $0.value.minY < $1.value.minY }?.key
-        if let key = crossing ?? fallback {
-            let d = key.startOfDay
-            if d != focusedDay { focusedDay = d }
-        }
+    // 焦点天 = 已滚过顶部、header 最靠近顶部的那天（按天 header frame，便宜）
+    private func updateFocusedDay(_ dayFrames: [Date: CGRect]) {
+        let above = dayFrames.filter { $0.value.minY <= 44 }
+        let pick = above.max { $0.value.minY < $1.value.minY }?.key
+            ?? dayFrames.min { $0.value.minY < $1.value.minY }?.key
+        if let d = pick, d != focusedDay { focusedDay = d }
     }
 
     private func goToDay(_ day: Date) {
