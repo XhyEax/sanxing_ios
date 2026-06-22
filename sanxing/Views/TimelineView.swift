@@ -664,8 +664,8 @@ struct TimelineView: View {
 
     // MARK: - 窗口 / 滚动
 
-    // 窗口跨度：以中心天为基准前后各 windowRadius 天（够连续滚动多天；不在窗口内的目标由 goToDay 重建窗口）
-    private static let windowRadius = 30
+    // 窗口跨度：以中心天为基准前后各 windowRadius 天（预加载前后 7 天；更远由 goToDay 重建窗口）
+    private static let windowRadius = 7
 
     private func setupIfNeeded(_ proxy: ScrollViewProxy) {
         guard days.isEmpty else { return }
