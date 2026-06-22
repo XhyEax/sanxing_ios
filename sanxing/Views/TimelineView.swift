@@ -65,22 +65,47 @@ struct TimelineView: View {
     private struct NewBlock: Identifiable { let start: Date; let end: Date; var id: Date { start } }
     private struct OverlapPair: Identifiable { let id = UUID(); let earlier: TimeBlock; let later: TimeBlock }
     private struct IdleRange: Hashable { let start: Date; let end: Date }
+    // 块在某一天里的「片段」：跨天块裁到当天 [start,end]；底层仍是同一条 block 记录
+    private struct Seg: Identifiable {
+        let block: TimeBlock
+        let start: Date
+        let end: Date
+        var id: String { "\(ObjectIdentifier(block).hashValue)@\(start.timeIntervalSinceReferenceDate)" }
+    }
 
     // MARK: - 取数（按天 / 按 hour-start）
 
-    // 当天的块（从按天分组缓存里取，避免每行 filter 整个 allBlocks）
+    private func rebuildDayCache() {
+        var byDay: [Date: [TimeBlock]] = [:]
+        for b in allBlocks where b.end > b.start {
+            var d = cal.startOfDay(for: b.start)
+            while d < b.end {            // 块覆盖的每一天都加入
+                byDay[d, default: []].append(b)
+                d = d.addingDays(1)
+            }
+        }
+        dayCache.byDay = byDay
+    }
+    // 当天涉及的块（缓存：每个块落进它覆盖的每一天，跨天块出现在多天）
     private func dayBlocks(of day: Date) -> [TimeBlock] {
         dayCache.byDay[cal.startOfDay(for: day)] ?? []
     }
-    // 在该整点起始的块
-    private func blocksStarting(at hs: Date) -> [TimeBlock] {
-        let h = cal.component(.hour, from: hs)
-        return dayBlocks(of: hs).filter { cal.component(.hour, from: $0.start) == h }
+    // 当天的片段（把跨天块裁到当天，不改记录），按起点排序
+    private func segs(of day: Date) -> [Seg] {
+        let d0 = cal.startOfDay(for: day), d1 = d0.addingDays(1)
+        return dayBlocks(of: day)
+            .map { Seg(block: $0, start: max($0.start, d0), end: min($0.end, d1)) }
+            .sorted { $0.start < $1.start }
     }
-    // 在更早整点起始、却延伸覆盖此整点的多小时块（同一天内）→ 该整点不单独成行
-    private func coveringBlock(at hs: Date) -> TimeBlock? {
+    // 在该整点起始的片段
+    private func segsStarting(at hs: Date) -> [Seg] {
         let h = cal.component(.hour, from: hs)
-        return dayBlocks(of: hs).first {
+        return segs(of: hs).filter { cal.component(.hour, from: $0.start) == h }
+    }
+    // 在更早整点起始、却延伸覆盖此整点的多小时片段 → 该整点不单独成行
+    private func coveringSeg(at hs: Date) -> Seg? {
+        let h = cal.component(.hour, from: hs)
+        return segs(of: hs).first {
             cal.component(.hour, from: $0.start) != h && $0.start <= hs && $0.end > hs
         }
     }
@@ -90,15 +115,15 @@ struct TimelineView: View {
     }
     private func visibleHourStarts(of day: Date) -> [Date] {
         hourStarts(of: day).filter { hs in
-            if !blocksStarting(at: hs).isEmpty { return true }   // 有块起始于此 → 显示（含与前块重叠的情形）
+            if !segsStarting(at: hs).isEmpty { return true }   // 有片段起始于此 → 显示（含与前块重叠的情形）
             let he = hs.addingTimeInterval(3600)
             // 整段被多小时块覆盖且无块 → 隐藏；若覆盖块在本整点内结束（留有空闲）→ 仍显示，渲染那段空闲
-            if let cov = coveringBlock(at: hs), cov.end >= he { return false }
+            if let cov = coveringSeg(at: hs), cov.end >= he { return false }
             return true
         }
     }
     private func emptyHourStarts(of day: Date) -> [Date] {
-        visibleHourStarts(of: day).filter { blocksStarting(at: $0).isEmpty }
+        visibleHourStarts(of: day).filter { segsStarting(at: $0).isEmpty }
     }
     // 窗口内全部可见 hour-start（升序），供范围拖拽
     private var allVisibleHourStarts: [Date] { days.flatMap { visibleHourStarts(of: $0) } }
@@ -143,7 +168,7 @@ struct TimelineView: View {
     // MARK: - Body
 
     var body: some View {
-        dayCache.byDay = Dictionary(grouping: allBlocks) { cal.startOfDay(for: $0.start) }   // 每次渲染重建一次
+        rebuildDayCache()   // 每次渲染重建：每个块落进它覆盖的每一天（跨天块多天）
         return NavigationStack {
             ScrollView {
                 LazyVStack(spacing: 0) {
@@ -242,10 +267,8 @@ struct TimelineView: View {
         }
     }
 
-    // 所有改动后的统一收尾：跨午夜的块按 0 点拆开，再合并同一天内相邻同类块。
-    // 填充 / 长按合并 / 编辑器关闭都走这里，保证跨天处理一致。
+    // 所有改动后的统一收尾：合并相邻同类块（跨天不拆，保留单条记录、视觉再裁两段）
     private func normalize() {
-        splitCrossDay()
         coalesceAdjacent()
     }
     private func afterEdit() {
@@ -259,7 +282,7 @@ struct TimelineView: View {
         guard sorted.count > 1 else { return }
         for k in 1..<sorted.count {
             let a = sorted[k - 1], b = sorted[k]
-            if a.start.isSameDay(as: b.start), a.end > b.start {
+            if a.end > b.start {   // 重叠（跨天也算）
                 overlap = OverlapPair(earlier: a, later: b)
                 return
             }
@@ -286,8 +309,9 @@ struct TimelineView: View {
     // MARK: - 天头（白线分割 + 日期 + 当天小结）
 
     private func dayHeader(_ day: Date) -> some View {
-        let blocks = dayBlocks(of: day)
-        let total = blocks.reduce(0) { $0 + $1.duration }
+        let segList = segs(of: day)   // 当天片段（跨天块按当天部分计）
+        let total = segList.reduce(0) { $0 + $1.end.timeIntervalSince($1.start) }
+        let blocks = segList
         let isToday = day.isSameDay(as: .now)
         return VStack(spacing: 6) {
             Rectangle().fill(Color(.separator)).frame(height: 1)   // 跨天分割线（自适应深浅色）
@@ -370,12 +394,16 @@ struct TimelineView: View {
         guard !data.items.isEmpty else { return }
         shareTitle = data.title
         shareRows = data.items
-        // 可复制的 JSON：可见天的块，category 改成分类中文名（便于阅读）
-        let dtos = visibleDays().flatMap { dayBlocks(of: $0) }.map { b -> TimeBlockDTO in
-            var d = b.dto
-            d.category = catStyle(for: b.category, custom: customCats).name
-            return d
-        }
+        // 可复制的 JSON：可见天的块（跨天块去重，整条记录），category 改成分类中文名
+        var seen = Set<PersistentIdentifier>()
+        let dtos = (visibleDays().isEmpty ? [focusedDay] : visibleDays())
+            .flatMap { dayBlocks(of: $0) }
+            .filter { seen.insert($0.id).inserted }
+            .map { b -> TimeBlockDTO in
+                var d = b.dto
+                d.category = catStyle(for: b.category, custom: customCats).name
+                return d
+            }
         shareJSON = DataTransfer.encodeLocal(BackupData(blocks: dtos)).flatMap { String(data: $0, encoding: .utf8) }
         shareImage = nil
         showShare = true   // 先弹（转圈），随后渲染默认图（无标题）
@@ -402,10 +430,12 @@ struct TimelineView: View {
 
     private func shareRow(_ item: HourItem) -> ShareItem {
         switch item {
-        case .block(let b):
+        case .block(let seg):
+            let b = seg.block
             let s = catStyle(for: b.category, custom: customCats)
-            return ShareItem(time: clock(b.start), name: s.name, title: b.title,
-                             sub: "\(clock(b.start))-\(clock(b.end)) · \(formatDuration(b.duration))", color: s.color)
+            return ShareItem(time: clock(seg.start), name: s.name, title: b.title,
+                             sub: "\(clock(seg.start))-\(clock(seg.end)) · \(formatDuration(seg.end.timeIntervalSince(seg.start)))",
+                             color: s.color)
         case .idle(let st, let e):
             return ShareItem(time: clock(st), name: "空闲", sub: formatDuration(e.timeIntervalSince(st)), color: nil)
         case .empty(let hs):
@@ -433,12 +463,12 @@ struct TimelineView: View {
     // 一个整点里按时间顺序排出的条目：空整点槽 / 块 / 块之间的空闲段（任意长度都显示）
     private enum HourItem: Identifiable {
         case empty(Date)            // 整点空闲槽（可多选/填充）
-        case block(TimeBlock)
+        case block(Seg)             // 块片段（跨天块裁到当天）
         case idle(Date, Date)       // 块之间剩余的空闲（展示 + 点按建块）
         var id: String {
             switch self {
             case .empty(let d): return "e\(d.timeIntervalSinceReferenceDate)"
-            case .block(let b): return "b\(ObjectIdentifier(b).hashValue)"
+            case .block(let seg): return "b\(seg.id)"
             case .idle(let s, _): return "i\(s.timeIntervalSinceReferenceDate)"
             }
         }
@@ -446,24 +476,24 @@ struct TimelineView: View {
 
     private func hourItems(_ hs: Date) -> [HourItem] {
         let he = hs.addingTimeInterval(3600)
-        let blocks = blocksStarting(at: hs).sorted { $0.start < $1.start }
-        let cov = coveringBlock(at: hs)
-        // 游标从整点起；若被前一个多小时块占用了开头，跳到它的结束（那段不算空闲）
+        let starting = segsStarting(at: hs).sorted { $0.start < $1.start }
+        let cov = coveringSeg(at: hs)
+        // 游标从整点起；若被前一个多小时片段占用了开头，跳到它的结束（那段不算空闲）
         var cursor = hs
         if let cov { cursor = min(he, max(cursor, cov.end)) }
 
-        if blocks.isEmpty {
+        if starting.isEmpty {
             if cov == nil { return [.empty(hs)] }              // 完全空 → 整点空闲槽
-            return cursor < he ? [.idle(cursor, he)] : []      // 覆盖块在本整点内结束 → 渲染剩余空闲
+            return cursor < he ? [.idle(cursor, he)] : []      // 覆盖片段在本整点内结束 → 渲染剩余空闲
         }
 
         var items: [HourItem] = []
-        for b in blocks {
-            if b.start > cursor { items.append(.idle(cursor, b.start)) }   // 块前空闲（非整点起始也会显示）
-            items.append(.block(b))
-            cursor = max(cursor, b.end)
+        for seg in starting {
+            if seg.start > cursor { items.append(.idle(cursor, seg.start)) }   // 片段前空闲
+            items.append(.block(seg))
+            cursor = max(cursor, seg.end)
         }
-        if cursor < he { items.append(.idle(cursor, he)) }                 // 块后到整点末的空闲
+        if cursor < he { items.append(.idle(cursor, he)) }                 // 片段后到整点末的空闲
         return items
     }
 
@@ -486,11 +516,11 @@ struct TimelineView: View {
             }) {
                 emptySlot(hs)
             }
-        case .block(let b):
+        case .block(let seg):
             timeLabeledRow(leading: {
-                leadingTimeMenu(b.start, isNow: isNowIn(b.start, b.end)) { blockTimeMenu(b) }
+                leadingTimeMenu(seg.start, isNow: isNowIn(seg.start, seg.end)) { blockTimeMenu(seg.block) }
             }) {
-                Button { tapBlock(b) } label: { blockCard(b) }.buttonStyle(.plain)
+                Button { tapBlock(seg.block) } label: { blockCard(seg) }.buttonStyle(.plain)
             }
         case .idle(let s, let e):
             timeLabeledRow(leading: {
@@ -632,9 +662,11 @@ struct TimelineView: View {
         .buttonStyle(.plain)
     }
 
-    private func blockCard(_ b: TimeBlock) -> some View {
+    private func blockCard(_ seg: Seg) -> some View {
+        let b = seg.block
         let isSel = selected.contains(b.id)
         let s = catStyle(for: b.category, custom: customCats)
+        let range = "\(seg.start.hm)-\(seg.end.hm) · \(formatDuration(seg.end.timeIntervalSince(seg.start)))"
         return HStack(spacing: 10) {
             if selectionMode {
                 Image(systemName: isSel ? "checkmark.circle.fill" : "circle")
@@ -645,14 +677,12 @@ struct TimelineView: View {
                 if b.title.isEmpty {
                     // 无标题：上行 图标+分类，下行 时间范围·时长
                     Label(s.name, systemImage: s.icon).font(.subheadline).foregroundStyle(s.color)
-                    Text("\(b.start.hm)-\(b.end.hm) · \(formatDuration(b.duration))")
-                        .font(.caption2).foregroundStyle(.secondary).lineLimit(1)
+                    Text(range).font(.caption2).foregroundStyle(.secondary).lineLimit(1)
                 } else {
                     Text(b.title).font(.subheadline)
                     HStack(spacing: 6) {
                         Label(s.name, systemImage: s.icon).font(.caption2).foregroundStyle(s.color)
-                        Text("· \(b.start.hm)-\(b.end.hm) · \(formatDuration(b.duration))")
-                            .font(.caption2).foregroundStyle(.secondary).lineLimit(1)
+                        Text("· \(range)").font(.caption2).foregroundStyle(.secondary).lineLimit(1)
                     }
                 }
             }
@@ -772,7 +802,7 @@ struct TimelineView: View {
             for item in hourItems(hs) {     // 选中该整点里的全部条目：块 / 空整点 / 小空闲段
                 switch item {
                 case .empty(let h): hours.insert(h)
-                case .block(let bl): ids.insert(bl.id)
+                case .block(let seg): ids.insert(seg.block.id)
                 case .idle(let s, let e): idles.insert(IdleRange(start: s, end: e))
                 }
             }
@@ -837,13 +867,12 @@ struct TimelineView: View {
         exitSelection()
     }
 
-    // 相邻且同类同名、且**同一自然日内**的块自动并成一个（跨天不合并）
+    // 相邻且同类同名的块自动并成一条（跨天也合并——保留单条记录，视觉再裁两段）
     private func coalesceAdjacent() {
         let sorted = allBlocks.sorted { $0.start < $1.start }
         var prev: TimeBlock?
         for b in sorted {
-            if let p = prev, p.category == b.category, p.title == b.title,
-               b.start <= p.end, p.start.isSameDay(as: b.start) {
+            if let p = prev, p.category == b.category, p.title == b.title, b.start <= p.end {
                 p.end = max(p.end, b.end)
                 if p.note.isEmpty { p.note = b.note }
                 ctx.delete(b)
@@ -897,49 +926,6 @@ struct TimelineView: View {
         guard let p = previousBlock(before: b), p.end < b.start else { return }
         b.start = p.end
         normalize()
-    }
-
-    // MARK: - 跨天拆分（0 点）
-
-    // 跨午夜的块按 0 点拆开：原块裁到当天 24:00，其后每天的剩余段另建块（只填空闲、不覆盖已有块）。
-    // 与「填充/选中设置」一致——跨天一律按天独立成块，不再保留一条跨天块。幂等（拆出的段都不跨天）。
-    private func splitCrossDay() {
-        let snapshot = allBlocks
-        for b in snapshot {
-            let firstMidnight = b.start.startOfDay.addingDays(1)
-            guard b.end > firstMidnight else { continue }
-            let originalEnd = b.end
-            b.end = firstMidnight                       // 原块裁到起始日 24:00
-            var dayStart = firstMidnight
-            while dayStart < originalEnd {
-                let dayEnd = dayStart.addingDays(1)
-                insertIntoFreeSlots(category: b.category, title: b.title, note: b.note,
-                                    from: dayStart, to: min(originalEnd, dayEnd),
-                                    existing: snapshot, skip: b.id)
-                dayStart = dayEnd
-            }
-        }
-    }
-
-    private func insertIntoFreeSlots(category: String, title: String, note: String,
-                                     from: Date, to: Date,
-                                     existing: [TimeBlock], skip: PersistentIdentifier) {
-        let busy = existing
-            .filter { $0.id != skip && $0.end > from && $0.start < to }
-            .map { (start: max($0.start, from), end: min($0.end, to)) }
-            .sorted { $0.start < $1.start }
-        var cursor = from
-        for seg in busy {
-            if seg.start > cursor {
-                ctx.insert(TimeBlock(start: cursor, end: seg.start,
-                                     title: title, category: category, note: note))
-            }
-            cursor = max(cursor, seg.end)
-        }
-        if cursor < to {
-            ctx.insert(TimeBlock(start: cursor, end: to,
-                                 title: title, category: category, note: note))
-        }
     }
 
 }

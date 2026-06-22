@@ -113,11 +113,12 @@ sanxing/
 - **防误触**：`.contentShape(RingShape(radius:r,width:ringWidth+16))` 把命中区限定在「圆环带」——只有点在两圆之间的环带才触发拖拽；点中心/外侧不拦手势，落给外层 ScrollView 滚动。`RingShape` = 外圆 + 反向内圆，nonzero 填出环带。
 - 与 `TimelineView.normalize`（splitCrossDay）配合：表盘把块拖成跨午夜后，回到今日 `afterEdit` 会按 0 点拆成按天独立的块。
 
-### 跨天拆分（splitCrossDay，按 0 点）+ 统一收尾 normalize
+### 跨天块：单条记录 + 视觉两段（不拆数据）
 
-- 所有改动后统一调 **`normalize()` = `splitCrossDay()` + `coalesceAdjacent()`**；填充 `fillSelectedHours`、长按合并 `mergeSelected`、编辑器关闭 `afterEdit` 都走它，保证跨天处理一致（之前 merge 会留一条跨天块、与填充不一致，已统一）。
-- `splitCrossDay`：块跨午夜（`end > start 当天的次日 0 点`）→ **原块裁到当天 24:00**，其后每天的剩余段**另建块**（`insertIntoFreeSlots` 只填空闲、不覆盖已有块）。即跨天一律**按 0 点拆成按天独立的块**，不再保留一条跨天块。
-- 幂等：拆出的段都不跨天，重跑不再拆；`coalesceAdjacent` 的同天守卫保证拆开的两段不会又被并回。
+- **底层只一条记录**：块可跨午夜（start 在 D 天、end 在 D+1）。不再 split 成两条。
+- **视觉裁成两段**：渲染按天把块裁成 `Seg`（`block` + 裁到当天的 `start/end`）。`rebuildDayCache` 把每个块放进它覆盖的**每一天**；`segs(of:)` 裁剪；`segsStarting`/`coveringSeg`/`hourItems` 全部基于 `Seg`，`HourItem.block(Seg)`、`blockCard(Seg)` 用裁剪后的时间显示，但 `tapBlock`/菜单/选择都作用在 `seg.block`（整条记录）。
+- **合并跨天**：`coalesceAdjacent` 去掉同天守卫——相邻同类同名块（含跨午夜首尾相接）合并成**一条**跨天记录（视觉仍两段）。`normalize() = coalesceAdjacent()`（不再 split）。
+- 导出/复制 JSON 对跨天块**按记录去重**（它出现在多天的 dayBlocks 里）。
 
 ### 选择与批量操作
 
