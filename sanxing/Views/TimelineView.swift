@@ -45,7 +45,7 @@ struct TimelineView: View {
     @State private var rowFrames: [Date: CGRect] = [:]
     @State private var dayFrames: [Date: CGRect] = [:]   // 各天 header 在视口中的位置（判可见天）
     @State private var dragAnchor: Date?
-    @State private var scrollTarget: String?        // 顶部导航跳转目标（dayHeaderID）
+    @State private var scrolledID: Date?            // scrollPosition：当前顶部行/滚动目标（hour-start）
     @State private var overlap: OverlapPair?        // 编辑后检测到的重叠，弹窗让用户选择如何处理
     @State private var dayCache = DayBlocksCache()
     @State private var shareImage: UIImage?
@@ -142,46 +142,39 @@ struct TimelineView: View {
     var body: some View {
         dayCache.byDay = Dictionary(grouping: allBlocks) { cal.startOfDay(for: $0.start) }   // 每次渲染重建一次
         return NavigationStack {
-            ScrollViewReader { proxy in
-                ScrollView {
-                    LazyVStack(spacing: 0) {
-                        ForEach(days, id: \.self) { day in
-                            dayHeader(day)
-                                .background(GeometryReader { geo in
-                                    Color.clear.preference(key: DayFrameKey.self,
-                                        value: [day: geo.frame(in: .named("timeline"))])
-                                })
-                            ForEach(visibleHourStarts(of: day), id: \.self) { hs in
-                                hourRow(hs)
-                                    .id(hs)
-                                    .background {
-                                        if selectionMode {   // 仅多选态上报行 frame（拖拽命中），普通滚动不上报
-                                            GeometryReader { geo in
-                                                Color.clear.preference(key: RowFrameKey.self,
-                                                    value: [hs: geo.frame(in: .named("timeline"))])
-                                            }
+            ScrollView {
+                LazyVStack(spacing: 0) {
+                    ForEach(days, id: \.self) { day in
+                        dayHeader(day)
+                            .background(GeometryReader { geo in
+                                Color.clear.preference(key: DayFrameKey.self,
+                                    value: [day: geo.frame(in: .named("timeline"))])
+                            })
+                        ForEach(visibleHourStarts(of: day), id: \.self) { hs in
+                            hourRow(hs)
+                                .id(hs)
+                                .background {
+                                    if selectionMode {   // 仅多选态上报行 frame（拖拽命中），普通滚动不上报
+                                        GeometryReader { geo in
+                                            Color.clear.preference(key: RowFrameKey.self,
+                                                value: [hs: geo.frame(in: .named("timeline"))])
                                         }
                                     }
-                            }
+                                }
                         }
                     }
-                    .padding(.horizontal)
                 }
-                .coordinateSpace(name: "timeline")
-                .onPreferenceChange(RowFrameKey.self) { rowFrames = $0 }
-                .onPreferenceChange(DayFrameKey.self) { dayFrames = $0; updateFocusedDay($0) }
-                .highPriorityGesture(selectDragGesture)
-                .onChange(of: scrollTarget) { _, t in
-                    guard let t else { return }
-                    DispatchQueue.main.async {
-                        var tx = Transaction(); tx.disablesAnimations = true   // 禁动画，直接定位
-                        withTransaction(tx) { proxy.scrollTo(t, anchor: .top) }
-                        scrollTarget = nil
-                    }
-                }
-                .onAppear { setupIfNeeded(proxy) }
-                .onChange(of: goTodayTrigger) { _, _ in scrollToToday(proxy) }
+                .scrollTargetLayout()
+                .padding(.horizontal)
             }
+            // scrollPosition 直接把目标行定位到顶部（不经过窗口顶部 → 无「滑到7天前」）
+            .scrollPosition(id: $scrolledID, anchor: .top)
+            .coordinateSpace(name: "timeline")
+            .onPreferenceChange(RowFrameKey.self) { rowFrames = $0 }
+            .onPreferenceChange(DayFrameKey.self) { dayFrames = $0; updateFocusedDay($0) }
+            .highPriorityGesture(selectDragGesture)
+            .onAppear { setupIfNeeded() }
+            .onChange(of: goTodayTrigger) { _, _ in scrollToToday() }
             .navigationTitle(selectionMode ? "已选 \(totalSelected)" : "今日")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar { toolbarContent }
@@ -668,30 +661,23 @@ struct TimelineView: View {
     // 窗口跨度：以中心天为基准前后各 windowRadius 天（预加载前后 7 天；更远由 goToDay 重建窗口）
     private static let windowRadius = 7
 
-    private func setupIfNeeded(_ proxy: ScrollViewProxy) {
+    private func setupIfNeeded() {
         guard days.isEmpty else { return }
         let t = Date.now.startOfDay
         days = (-Self.windowRadius...Self.windowRadius).map { t.addingDays($0) }
         focusedDay = t
-        scrollToToday(proxy)   // 首屏定位当前第一个空闲
+        scrolledID = firstFreeHourStart() ?? visibleHourStarts(of: t).first   // 首屏直接定位（scrollPosition）
     }
 
-    // 点「时间轴」Tab / 首屏：滚到今天「当前第一个空闲」行。
-    // 多次重试：切 Tab/首屏时 LazyVStack 还没把今天那行布局好，单次 scrollTo 会太早不生效。
-    private func scrollToToday(_ proxy: ScrollViewProxy) {
+    // 点「时间轴」Tab / 首屏：定位今天「当前第一个空闲」行。用 scrollPosition 直接落位，不经过窗口顶部。
+    private func scrollToToday() {
         let t = Date.now.startOfDay
         if t < (days.first ?? t) || t > (days.last ?? t) {   // 目标在窗口外 → 以今天为中心重建
             days = (-Self.windowRadius...Self.windowRadius).map { t.addingDays($0) }
         }
         focusedDay = t
-        let vis = visibleHourStarts(of: t)
-        guard let target = firstFreeHourStart() ?? vis.first else { return }
-        for delay in [0.0, 0.1, 0.3] {
-            DispatchQueue.main.asyncAfter(deadline: .now() + delay) {
-                var tx = Transaction(); tx.disablesAnimations = true   // 禁动画：不要从7天前一路滑下来
-                withTransaction(tx) { proxy.scrollTo(target, anchor: .top) }
-            }
-        }
+        let target = firstFreeHourStart() ?? visibleHourStarts(of: t).first
+        DispatchQueue.main.async { scrolledID = target }   // 让窗口/行先就绪再定位
     }
 
     // 今天从当前钟点起、第一个含空闲（空整点或小空闲段）的行
@@ -724,7 +710,8 @@ struct TimelineView: View {
             days = (-Self.windowRadius...Self.windowRadius).map { d.addingDays($0) }
         }
         focusedDay = d
-        scrollTarget = dayHeaderID(d)
+        let target = (d.isSameDay(as: .now) ? firstFreeHourStart() : nil) ?? visibleHourStarts(of: d).first
+        DispatchQueue.main.async { scrolledID = target }
     }
 
     // MARK: - 长按拖拽多选
