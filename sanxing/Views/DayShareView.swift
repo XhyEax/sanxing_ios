@@ -61,20 +61,40 @@ struct DayShareView: View {
     }
 }
 
-// 预览 + 分享面板：默认图(无标题)由父级渲染传入；勾选「显示标题」时在本面板重渲染
+// 预览 + 分享面板：默认图(无详情)由父级渲染传入；点「显示详情」眼睛时在本面板重渲染
 struct SharePreviewSheet: View {
-    let image: UIImage?     // 默认（无标题）图
+    let image: UIImage?     // 默认（无详情）图
     let title: String
     let items: [ShareItem]
     let scheme: ColorScheme
-    var jsonText: String? = nil
 
     @Environment(\.dismiss) private var dismiss
     @State private var showTitle = false
-    @State private var titledImage: UIImage?   // 显示标题时重渲染
+    @State private var titledImage: UIImage?   // 显示详情时重渲染
     @State private var copied = false
 
     private var shown: UIImage? { showTitle ? titledImage : image }
+
+    // 复制用纯文本：镜像预览图，去掉左侧时间列（每行「分类 [标题] 起止 时长」/「空闲 起止 时长」）
+    private var copyText: String {
+        var lines: [String] = [title]
+        for it in items {
+            if let dh = it.dayHeader {
+                lines.append("")
+                lines.append(dh)
+            } else {
+                let sub = it.sub.replacingOccurrences(of: " · ", with: " ")
+                if it.color == nil {
+                    lines.append("空闲 \(sub)")
+                } else if showTitle && !it.title.isEmpty {
+                    lines.append("\(it.name) \(it.title) \(sub)")
+                } else {
+                    lines.append("\(it.name) \(sub)")
+                }
+            }
+        }
+        return lines.joined(separator: "\n")
+    }
 
     var body: some View {
         NavigationStack {
@@ -95,17 +115,16 @@ struct SharePreviewSheet: View {
             .toolbar {
                 ToolbarItemGroup(placement: .topBarLeading) {
                     Button("取消") { dismiss() }
-                    Button { showTitle.toggle() } label: {   // 勾选框：是否显示标题
-                        Label("标题", systemImage: showTitle ? "checkmark.square.fill" : "square")
+                    Button { showTitle.toggle() } label: {   // 小眼睛：是否显示详情
+                        Image(systemName: showTitle ? "eye" : "eye.slash")
                     }
                 }
                 ToolbarItemGroup(placement: .topBarTrailing) {
                     Button {
-                        if let j = jsonText { UIPasteboard.general.string = j; copied = true }
+                        UIPasteboard.general.string = copyText; copied = true
                     } label: {
                         Image(systemName: copied ? "checkmark" : "doc.on.doc")
                     }
-                    .disabled(jsonText == nil)
                     if let img = shown {
                         ShareLink(item: Image(uiImage: img),
                                   preview: SharePreview("时间轴", image: Image(uiImage: img))) {

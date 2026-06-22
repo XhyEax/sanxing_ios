@@ -51,7 +51,6 @@ struct TimelineView: View {
     @State private var shareTitle = ""
     @State private var shareRows: [ShareItem] = []
     @State private var shareImage: UIImage?
-    @State private var shareJSON: String?
     @State private var showShare = false
     @AppStorage("appColorScheme") private var colorSchemeIndex = 0
     @Environment(\.colorScheme) private var systemScheme
@@ -262,7 +261,7 @@ struct TimelineView: View {
             }
             .sheet(isPresented: $showShare) {
                 SharePreviewSheet(image: shareImage, title: shareTitle, items: shareRows,
-                                  scheme: effectiveScheme, jsonText: shareJSON)
+                                  scheme: effectiveScheme)
             }
         }
     }
@@ -394,17 +393,6 @@ struct TimelineView: View {
         guard !data.items.isEmpty else { return }
         shareTitle = data.title
         shareRows = data.items
-        // 可复制的 JSON：分享范围内的块（跨天块去重，整条记录），category 改成分类中文名
-        var seen = Set<PersistentIdentifier>()
-        let dtos = shareRange().days
-            .flatMap { dayBlocks(of: $0) }
-            .filter { seen.insert($0.id).inserted }
-            .map { b -> TimeBlockDTO in
-                var d = b.dto
-                d.category = catStyle(for: b.category, custom: customCats).name
-                return d
-            }
-        shareJSON = DataTransfer.encodeLocal(BackupData(blocks: dtos)).flatMap { String(data: $0, encoding: .utf8) }
         shareImage = nil
         showShare = true   // 先弹（转圈），随后渲染默认图（无标题）
         DispatchQueue.main.async {
