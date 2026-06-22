@@ -679,11 +679,13 @@ struct TimelineView: View {
                     Label(s.name, systemImage: s.icon).font(.subheadline).foregroundStyle(s.color)
                     Text(range).font(.caption2).foregroundStyle(.secondary).lineLimit(1)
                 } else {
-                    Text(b.title).font(.subheadline)
+                    // 有标题：图标 分类 · 标题 （备注），下行 时间范围·时长
                     HStack(spacing: 6) {
-                        Label(s.name, systemImage: s.icon).font(.caption2).foregroundStyle(s.color)
-                        Text("· \(range)").font(.caption2).foregroundStyle(.secondary).lineLimit(1)
+                        Label(s.name, systemImage: s.icon).font(.subheadline).foregroundStyle(s.color)
+                        Text(b.note.isEmpty ? "· \(b.title)" : "· \(b.title)（\(b.note)）")
+                            .font(.subheadline).lineLimit(1)
                     }
+                    Text(range).font(.caption2).foregroundStyle(.secondary).lineLimit(1)
                 }
             }
             Spacer(minLength: 0)
