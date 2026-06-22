@@ -24,7 +24,8 @@ private struct DayFrameKey: PreferenceKey {
 private final class DayBlocksCache { var byDay: [Date: [TimeBlock]] = [:] }
 
 struct TimelineView: View {
-    var goTodayTrigger: Int = 0   // 点「今日」Tab 时 +1 → 滚回今日
+    var goTodayTrigger: Int = 0   // 点「时间轴」Tab 时 +1
+    var goTodayPhase: Int = 0     // 0=今天0点 1=当前第一个空闲
 
     @Environment(\.modelContext) private var ctx
     @Query(sort: \TimeBlock.start, order: .forward) private var allBlocks: [TimeBlock]
@@ -179,7 +180,7 @@ struct TimelineView: View {
                     }
                 }
                 .onAppear { setupIfNeeded(proxy) }
-                .onChange(of: goTodayTrigger) { _, _ in scrollToNow(proxy) }
+                .onChange(of: goTodayTrigger) { _, _ in scrollToToday(proxy, idle: goTodayPhase == 1) }
             }
             .navigationTitle(selectionMode ? "已选 \(totalSelected)" : "今日")
             .navigationBarTitleDisplayMode(.inline)
@@ -672,23 +673,37 @@ struct TimelineView: View {
         let t = Date.now.startOfDay
         days = (-Self.windowRadius...Self.windowRadius).map { t.addingDays($0) }
         focusedDay = t
-        scrollToNow(proxy)
+        scrollToToday(proxy, idle: false)   // 首屏定位今天 0 点
     }
 
-    // 滚到今天当前钟点。多次重试：切 Tab/首屏时 LazyVStack 还没把远处的今天那行布局好，
-    // 单次 scrollTo 会太早不生效（于是停在窗口顶部 ~30 天前）。立即 + 几次延迟兜底。
-    private func scrollToNow(_ proxy: ScrollViewProxy) {
+    // 点「时间轴」Tab：idle=false 滚到今天 0 点；idle=true 滚到当前第一个空闲。
+    // 多次重试：切 Tab/首屏时 LazyVStack 还没把今天那行布局好，单次 scrollTo 会太早不生效。
+    private func scrollToToday(_ proxy: ScrollViewProxy, idle: Bool) {
         let t = Date.now.startOfDay
-        // 目标在窗口外（极少）→ 以今天为中心重建窗口
-        if t < (days.first ?? t) || t > (days.last ?? t) {
+        if t < (days.first ?? t) || t > (days.last ?? t) {   // 目标在窗口外 → 以今天为中心重建
             days = (-Self.windowRadius...Self.windowRadius).map { t.addingDays($0) }
         }
         focusedDay = t
         let vis = visibleHourStarts(of: t)
-        guard let target = vis.last(where: { $0 <= nowHourStart }) ?? vis.first else { return }
+        let target = (idle ? firstFreeHourStart() : vis.first) ?? vis.first
+        guard let target else { return }
         for delay in [0.0, 0.1, 0.3] {
             DispatchQueue.main.asyncAfter(deadline: .now() + delay) { proxy.scrollTo(target, anchor: .top) }
         }
+    }
+
+    // 今天从当前钟点起、第一个含空闲（空整点或小空闲段）的行
+    private func firstFreeHourStart() -> Date? {
+        let t = Date.now.startOfDay
+        guard t.isSameDay(as: .now) else { return visibleHourStarts(of: t).first }
+        let now = Date.now
+        for hs in visibleHourStarts(of: t) where hs.addingTimeInterval(3600) > now {
+            let hasFree = hourItems(hs).contains {
+                switch $0 { case .empty, .idle: return true; case .block: return false }
+            }
+            if hasFree { return hs }
+        }
+        return visibleHourStarts(of: t).last
     }
 
     // 焦点天 = 已滚过顶部、header 最靠近顶部的那天（按天 header frame，便宜）

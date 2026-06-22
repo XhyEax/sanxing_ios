@@ -8,17 +8,21 @@ import SwiftData
 
 struct MainTabView: View {
     @State private var selection = 0
-    @State private var todayTrigger = 0   // 点「今日」Tab（含从别的 Tab 切回/重复点）→ 让时间轴滚回今日
+    @State private var todayTrigger = 0   // 点「时间轴」Tab → 触发滚动
+    @State private var todayPhase = 0     // 0=今天0点 1=当前第一个空闲；切入归 0，重复点切换
 
     var body: some View {
         TabView(selection: Binding(
             get: { selection },
             set: { newValue in
-                if newValue == 0 { todayTrigger += 1 }
+                if newValue == 0 {
+                    todayPhase = (selection == 0) ? (todayPhase == 0 ? 1 : 0) : 0   // 重复点切换 / 切入归 0 点
+                    todayTrigger += 1
+                }
                 selection = newValue
             }
         )) {
-            TimelineView(goTodayTrigger: todayTrigger)
+            TimelineView(goTodayTrigger: todayTrigger, goTodayPhase: todayPhase)
                 .tag(0)
                 .tabItem { Label("时间轴", systemImage: "calendar.day.timeline.left") }
 
