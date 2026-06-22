@@ -67,10 +67,14 @@ struct SettingsView: View {
 
     @ViewBuilder private var dataSection: some View {
         Section {
-            Button { exportToFile() } label: {
+            Menu {
+                rangeButtons { exportToFile(days: $0) }
+            } label: {
                 Label("导出到文件", systemImage: "square.and.arrow.up")
             }
-            Button { copyToClipboard() } label: {
+            Menu {
+                rangeButtons { copyToClipboard(days: $0) }
+            } label: {
                 Label("复制到剪贴板", systemImage: "doc.on.doc")
             }
             Button { showImporter = true } label: {
@@ -105,21 +109,34 @@ struct SettingsView: View {
 
     // MARK: - 导出
 
-    private var backup: BackupData {
-        BackupData(version: 1,
-                   blocks: blocks.map(\.dto),
-                   diaries: diaries.map(\.dto),
-                   categories: cats.map(\.dto))
+    // 范围选项：3 / 7 / 30 天 / 全部（nil）
+    @ViewBuilder private func rangeButtons(_ action: @escaping (Int?) -> Void) -> some View {
+        Button("最近 3 天") { action(3) }
+        Button("最近 7 天") { action(7) }
+        Button("最近 30 天") { action(30) }
+        Button("全部") { action(nil) }
     }
 
-    private func exportToFile() {
-        guard let data = DataTransfer.encode(backup) else { alertMsg = "导出失败"; return }
+    // days=nil 全部；否则含今天在内的最近 days 天
+    private func backup(days: Int?) -> BackupData {
+        guard let n = days else {
+            return BackupData(version: 1, blocks: blocks.map(\.dto), diaries: diaries.map(\.dto), categories: cats.map(\.dto))
+        }
+        let cutoff = Date.now.startOfDay.addingDays(-(n - 1))
+        return BackupData(version: 1,
+                          blocks: blocks.filter { $0.start >= cutoff }.map(\.dto),
+                          diaries: diaries.filter { $0.createdAt >= cutoff }.map(\.dto),
+                          categories: cats.map(\.dto))
+    }
+
+    private func exportToFile(days: Int?) {
+        guard let data = DataTransfer.encode(backup(days: days)) else { alertMsg = "导出失败"; return }
         exportDoc = JSONDocument(data: data)
         showExporter = true
     }
 
-    private func copyToClipboard() {
-        guard let data = DataTransfer.encode(backup), let s = String(data: data, encoding: .utf8) else {
+    private func copyToClipboard(days: Int?) {
+        guard let data = DataTransfer.encode(backup(days: days)), let s = String(data: data, encoding: .utf8) else {
             alertMsg = "导出失败"; return
         }
         UIPasteboard.general.string = s

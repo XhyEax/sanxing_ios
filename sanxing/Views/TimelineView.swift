@@ -376,7 +376,7 @@ struct TimelineView: View {
             d.category = catStyle(for: b.category, custom: customCats).name
             return d
         }
-        shareJSON = DataTransfer.encode(BackupData(blocks: dtos)).flatMap { String(data: $0, encoding: .utf8) }
+        shareJSON = DataTransfer.encodeLocal(BackupData(blocks: dtos)).flatMap { String(data: $0, encoding: .utf8) }
         shareImage = nil
         showShare = true   // 先弹（转圈），随后渲染默认图（无标题）
         DispatchQueue.main.async {

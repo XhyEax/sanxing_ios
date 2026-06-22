@@ -93,6 +93,18 @@ enum DataTransfer {
     }
 
     static func encode(_ b: BackupData) -> Data? { try? encoder().encode(b) }
+
+    // 本地时间编码（截图预览「复制」用，便于直接阅读；正式导出仍用 ISO8601）
+    static func localEncoder() -> JSONEncoder {
+        let e = JSONEncoder()
+        e.outputFormatting = [.prettyPrinted, .withoutEscapingSlashes]
+        let df = DateFormatter()
+        df.dateFormat = "yyyy-MM-dd HH:mm:ss"
+        df.locale = Locale(identifier: "zh_CN")   // 当前时区
+        e.dateEncodingStrategy = .formatted(df)
+        return e
+    }
+    static func encodeLocal(_ b: BackupData) -> Data? { try? localEncoder().encode(b) }
     static func decode(_ data: Data) -> BackupData? { try? decoder().decode(BackupData.self, from: data) }
 
     // 时间块按 start、日记按 createdAt、自定义分类按 id 判重
