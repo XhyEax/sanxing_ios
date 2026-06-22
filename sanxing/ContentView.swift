@@ -24,7 +24,7 @@ struct MainTabView: View {
 
             DiaryView()
                 .tag(1)
-                .tabItem { Label("日记", systemImage: "book.closed") }
+                .tabItem { Label("随手记", systemImage: "book.closed") }
 
             StatsView()
                 .tag(2)

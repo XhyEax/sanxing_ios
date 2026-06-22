@@ -36,7 +36,7 @@ struct DiaryView: View {
                     }
                 }
             }
-            .navigationTitle("日记")
+            .navigationTitle("随手记")
             .toolbar {
                 ToolbarItem(placement: .navigationBarTrailing) {
                     Button { showNew = true } label: { Image(systemName: "plus") }
