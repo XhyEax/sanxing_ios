@@ -58,7 +58,7 @@ enum BlockCategory: String, CaseIterable, Identifiable {
         case .reading: return .cyan
         case .code: return .mint
         case .writing: return .yellow
-        case .other: return .blue
+        case .other: return .cyan
         }
     }
     var icon: String {
