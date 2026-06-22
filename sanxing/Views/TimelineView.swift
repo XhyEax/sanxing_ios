@@ -374,10 +374,18 @@ struct TimelineView: View {
                 .disabled(selected.isEmpty)
             }
         } else {
-            ToolbarItem(placement: .navigationBarLeading) {
+            ToolbarItemGroup(placement: .navigationBarLeading) {
                 Button { datePickerDay = focusedDay; showDatePicker = true } label: {
                     Image(systemName: "calendar")
                 }
+                Button { ctx.undoManager?.undo() } label: {
+                    Image(systemName: "arrow.uturn.backward")
+                }
+                .disabled(!(ctx.undoManager?.canUndo ?? false))
+                Button { ctx.undoManager?.redo() } label: {
+                    Image(systemName: "arrow.uturn.forward")
+                }
+                .disabled(!(ctx.undoManager?.canRedo ?? false))
             }
             ToolbarItem(placement: .principal) { dayNav }
             ToolbarItemGroup(placement: .navigationBarTrailing) {
