@@ -174,7 +174,8 @@ struct TimelineView: View {
                 .onChange(of: scrollTarget) { _, t in
                     guard let t else { return }
                     DispatchQueue.main.async {
-                        proxy.scrollTo(t, anchor: .top)   // 不加动画：避免从窗口顶部(~31天前)一路滚下来的观感
+                        var tx = Transaction(); tx.disablesAnimations = true   // 禁动画，直接定位
+                        withTransaction(tx) { proxy.scrollTo(t, anchor: .top) }
                         scrollTarget = nil
                     }
                 }
@@ -686,7 +687,10 @@ struct TimelineView: View {
         let vis = visibleHourStarts(of: t)
         guard let target = firstFreeHourStart() ?? vis.first else { return }
         for delay in [0.0, 0.1, 0.3] {
-            DispatchQueue.main.asyncAfter(deadline: .now() + delay) { proxy.scrollTo(target, anchor: .top) }
+            DispatchQueue.main.asyncAfter(deadline: .now() + delay) {
+                var tx = Transaction(); tx.disablesAnimations = true   // 禁动画：不要从7天前一路滑下来
+                withTransaction(tx) { proxy.scrollTo(target, anchor: .top) }
+            }
         }
     }
 
