@@ -365,10 +365,13 @@ struct TimelineView: View {
     private func shareScreenshot() {
         let data = shareItems()
         guard !data.items.isEmpty else { return }
-        // 可复制的 JSON：可见天的块 + 自定义分类
-        let blocks = visibleDays().flatMap { dayBlocks(of: $0) }
-        let backup = BackupData(blocks: blocks.map(\.dto), categories: customCats.map(\.dto))
-        shareJSON = DataTransfer.encode(backup).flatMap { String(data: $0, encoding: .utf8) }
+        // 可复制的 JSON：可见天的块，category 改成分类中文名（便于阅读）
+        let dtos = visibleDays().flatMap { dayBlocks(of: $0) }.map { b -> TimeBlockDTO in
+            var d = b.dto
+            d.category = catStyle(for: b.category, custom: customCats).name
+            return d
+        }
+        shareJSON = DataTransfer.encode(BackupData(blocks: dtos)).flatMap { String(data: $0, encoding: .utf8) }
         shareImage = nil
         showShare = true     // 先弹预览（转圈），随后渲染出图，避免按下去卡住
         DispatchQueue.main.async {
