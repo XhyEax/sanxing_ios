@@ -327,11 +327,11 @@ struct TimelineView: View {
                 if let b = singleBlock {
                     if Date.now < b.end {   // 开始改为现在
                         Spacer()
-                        Button { setStartNow(b); exitSelection() } label: { Image(systemName: "arrow.right.to.line") }
+                        Button { setStartNow(b); exitSelection() } label: { Image(systemName: "arrow.left.to.line") }
                     }
                     if Date.now > b.start {   // 结束改为现在
                         Spacer()
-                        Button { setEndNow(b); exitSelection() } label: { Image(systemName: "stop.circle") }
+                        Button { setEndNow(b); exitSelection() } label: { Image(systemName: "arrow.right.to.line") }
                     }
                     if selectedIdleCount > 0 {   // 并入选中空闲
                         Spacer()
@@ -535,10 +535,10 @@ struct TimelineView: View {
             Button { mergeGapAfter(b) } label: { Label("合并下方空闲", systemImage: "arrow.down.to.line") }
         }
         if Date.now > b.start {
-            Button { setEndNow(b) } label: { Label("现在结束", systemImage: "stop.circle") }
+            Button { setEndNow(b) } label: { Label("现在结束", systemImage: "arrow.right.to.line") }
         }
         if Date.now < b.end {
-            Button { setStartNow(b) } label: { Label("现在开始", systemImage: "arrow.right.to.line") }
+            Button { setStartNow(b) } label: { Label("现在开始", systemImage: "arrow.left.to.line") }
         }
     }
 
