@@ -407,7 +407,8 @@ struct TimelineView: View {
     // 当前屏幕显示的块（跨天则多天都含），每天首块…末块、丢前后空闲
     private func shareItems() -> (title: String, items: [ShareItem]) {
         func isBlock(_ i: HourItem) -> Bool { if case .block = i { return true }; return false }
-        let vds = visibleDays()
+        var vds = visibleDays()
+        if vds.isEmpty { vds = [focusedDay] }   // dayFrames 未就绪时兜底分享焦点天
         var out: [ShareItem] = []
         for day in vds {
             let raw = visibleHourStarts(of: day).flatMap { hourItems($0) }
