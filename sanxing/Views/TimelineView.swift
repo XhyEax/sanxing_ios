@@ -633,11 +633,13 @@ struct TimelineView: View {
             }
             RoundedRectangle(cornerRadius: 3).fill(s.color).frame(width: 5)
             VStack(alignment: .leading, spacing: 3) {
-                if !b.title.isEmpty { Text(b.title).font(.subheadline) }   // 标题留空就不显示顶部行
+                let single = b.title.isEmpty   // 标题留空：只一行，字体放大占满原两行高度
+                if !single { Text(b.title).font(.subheadline) }
                 HStack(spacing: 6) {
-                    Label(s.name, systemImage: s.icon).font(.caption2).foregroundStyle(s.color)
+                    Label(s.name, systemImage: s.icon)
+                        .font(single ? .headline : .caption2).foregroundStyle(s.color)
                     Text("· \(b.start.hm)-\(b.end.hm) · \(formatDuration(b.duration))")
-                        .font(.caption2).foregroundStyle(.secondary)
+                        .font(single ? .subheadline : .caption2).foregroundStyle(.secondary)
                         .lineLimit(1)
                 }
             }
