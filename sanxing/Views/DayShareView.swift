@@ -20,43 +20,43 @@ struct DayShareView: View {
     var showTitle: Bool = false   // 是否显示块标题
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            Text(title).font(.title2).bold()
+        VStack(alignment: .leading, spacing: 12) {
+            Text(title).font(.largeTitle).bold()
             ForEach(items) { it in
                 if let dh = it.dayHeader {
-                    Text(dh).font(.headline)
+                    Text(dh).font(.title2).bold()
                         .foregroundStyle(.secondary)
-                        .padding(.top, 8)
+                        .padding(.top, 10)
                 } else if let c = it.color {
-                    HStack(alignment: .top, spacing: 10) {
-                        Text(it.time).font(.subheadline).monospacedDigit()
+                    HStack(alignment: .top, spacing: 12) {
+                        Text(it.time).font(.title3).monospacedDigit()
                             .foregroundStyle(.secondary)
-                            .frame(width: 52, alignment: .leading)
-                        RoundedRectangle(cornerRadius: 3).fill(c).frame(width: 5)
-                        VStack(alignment: .leading, spacing: 3) {
+                            .frame(width: 70, alignment: .leading)
+                        RoundedRectangle(cornerRadius: 3).fill(c).frame(width: 6)
+                        VStack(alignment: .leading, spacing: 4) {
                             if showTitle && !it.title.isEmpty {
-                                Text(it.title).font(.body)
+                                Text(it.title).font(.title3)
                             }
                             HStack(spacing: 6) {
-                                Text(it.name).font(.subheadline).foregroundStyle(c)
-                                Text("· \(it.sub)").font(.footnote).foregroundStyle(.secondary)
+                                Text(it.name).font(.title3).foregroundStyle(c)
+                                Text("· \(it.sub)").font(.body).foregroundStyle(.secondary)
                             }
                         }
                         Spacer(minLength: 0)
                     }
                 } else {
-                    HStack(alignment: .top, spacing: 10) {
-                        Text(it.time).font(.subheadline).monospacedDigit()
+                    HStack(alignment: .top, spacing: 12) {
+                        Text(it.time).font(.title3).monospacedDigit()
                             .foregroundStyle(.secondary)
-                            .frame(width: 52, alignment: .leading)
-                        Text("空闲 · \(it.sub)").font(.subheadline).foregroundStyle(.tertiary)
+                            .frame(width: 70, alignment: .leading)
+                        Text("空闲 · \(it.sub)").font(.title3).foregroundStyle(.tertiary)
                         Spacer(minLength: 0)
                     }
                 }
             }
         }
-        .padding(20)
-        .frame(width: 390, alignment: .leading)
+        .padding(24)
+        .frame(width: 480, alignment: .leading)
         .background(Color(.systemBackground))
     }
 }
