@@ -20,7 +20,7 @@ struct MainTabView: View {
         )) {
             TimelineView(goTodayTrigger: todayTrigger)
                 .tag(0)
-                .tabItem { Label("今日", systemImage: "calendar.day.timeline.left") }
+                .tabItem { Label("时间轴", systemImage: "calendar.day.timeline.left") }
 
             DiaryView()
                 .tag(1)
