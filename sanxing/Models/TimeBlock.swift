@@ -9,11 +9,11 @@ final class TimeBlock {
     var start: Date = Date.now
     var end: Date = Date.now
     var title: String = ""
-    var category: String = BlockCategory.other.rawValue   // 分类 key，见 BlockCategory.rawValue
+    var category: String = BlockCategory.think.rawValue   // 分类 key，见 BlockCategory.rawValue
     var note: String = ""
 
     init(start: Date, end: Date, title: String,
-         category: String = BlockCategory.other.rawValue, note: String = "") {
+         category: String = BlockCategory.think.rawValue, note: String = "") {
         self.start = start
         self.end = end
         self.title = title
@@ -23,12 +23,12 @@ final class TimeBlock {
 
     /// 时长（秒，至少 0）
     var duration: TimeInterval { max(0, end.timeIntervalSince(start)) }
-    var cat: BlockCategory { BlockCategory(rawValue: category) ?? .other }
+    var cat: BlockCategory { BlockCategory(rawValue: category) ?? .think }
 }
 
 // 时间块分类：颜色 + 图标 + 名称（先内置一组，后续可做成可配置）
 enum BlockCategory: String, CaseIterable, Identifiable {
-    case work, study, rest, exercise, life, fun, phone, reading, code, writing, other
+    case work, study, rest, exercise, life, fun, phone, reading, code, writing, think
     var id: String { rawValue }
 
     var name: String {
@@ -43,7 +43,7 @@ enum BlockCategory: String, CaseIterable, Identifiable {
         case .reading: return "阅读"
         case .code: return "编程"
         case .writing: return "写作"
-        case .other: return "其他"
+        case .think: return "think"
         }
     }
     var color: Color {
@@ -58,7 +58,7 @@ enum BlockCategory: String, CaseIterable, Identifiable {
         case .reading: return .cyan
         case .code: return .mint
         case .writing: return .yellow
-        case .other: return .cyan
+        case .think: return .cyan
         }
     }
     var icon: String {
@@ -73,7 +73,7 @@ enum BlockCategory: String, CaseIterable, Identifiable {
         case .reading: return "books.vertical.fill"
         case .code: return "chevron.left.forwardslash.chevron.right"
         case .writing: return "square.and.pencil"
-        case .other: return "brain.head.profile"
+        case .think: return "brain"
         }
     }
 }

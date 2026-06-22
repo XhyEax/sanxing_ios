@@ -31,7 +31,7 @@ struct TimeBlockEditorView: View {
             base = cal.date(bySettingHour: 9, minute: 0, second: 0, of: day.startOfDay) ?? day.startOfDay
         }
         _title = State(initialValue: "")
-        _categoryKey = State(initialValue: BlockCategory.other.rawValue)
+        _categoryKey = State(initialValue: BlockCategory.think.rawValue)
         _start = State(initialValue: base)
         _end = State(initialValue: base.addingTimeInterval(3600))
         _durationMinutes = State(initialValue: 60)
@@ -42,7 +42,7 @@ struct TimeBlockEditorView: View {
     init(start: Date, end: Date) {
         existing = nil
         _title = State(initialValue: "")
-        _categoryKey = State(initialValue: BlockCategory.other.rawValue)
+        _categoryKey = State(initialValue: BlockCategory.think.rawValue)
         _start = State(initialValue: start)
         _end = State(initialValue: end)
         let mins = Int(end.timeIntervalSince(start) / 60)
