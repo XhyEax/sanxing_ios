@@ -48,7 +48,8 @@ struct TimelineView: View {
     @State private var scrolledID: Date?            // scrollPosition：当前顶部行/滚动目标（hour-start）
     @State private var overlap: OverlapPair?        // 编辑后检测到的重叠，弹窗让用户选择如何处理
     @State private var dayCache = DayBlocksCache()
-    @State private var shareImage: UIImage?
+    @State private var shareTitle = ""
+    @State private var shareRows: [ShareItem] = []
     @State private var shareJSON: String?
     @State private var showShare = false
     @AppStorage("appColorScheme") private var colorSchemeIndex = 0
@@ -234,7 +235,8 @@ struct TimelineView: View {
                 .presentationDetents([.medium, .large])
             }
             .sheet(isPresented: $showShare) {
-                SharePreviewSheet(image: shareImage, jsonText: shareJSON)
+                SharePreviewSheet(title: shareTitle, items: shareRows,
+                                  scheme: effectiveScheme, jsonText: shareJSON)
             }
         }
     }
@@ -365,6 +367,8 @@ struct TimelineView: View {
     private func shareScreenshot() {
         let data = shareItems()
         guard !data.items.isEmpty else { return }
+        shareTitle = data.title
+        shareRows = data.items
         // 可复制的 JSON：可见天的块，category 改成分类中文名（便于阅读）
         let dtos = visibleDays().flatMap { dayBlocks(of: $0) }.map { b -> TimeBlockDTO in
             var d = b.dto
@@ -372,15 +376,7 @@ struct TimelineView: View {
             return d
         }
         shareJSON = DataTransfer.encode(BackupData(blocks: dtos)).flatMap { String(data: $0, encoding: .utf8) }
-        shareImage = nil
-        showShare = true     // 先弹预览（转圈），随后渲染出图，避免按下去卡住
-        DispatchQueue.main.async {
-            let renderer = ImageRenderer(
-                content: DayShareView(title: data.title, items: data.items)
-                    .environment(\.colorScheme, effectiveScheme))   // 跟随主题
-            renderer.scale = 2   // 2x 够清晰、比 3x 快
-            shareImage = renderer.uiImage
-        }
+        showShare = true   // 预览面板里渲染（可切「显示标题」即时重渲染）
     }
 
     // 当前屏幕里可见的天（按 header 在视口中的位置；含被上方块覆盖到顶部的那天）
@@ -399,12 +395,12 @@ struct TimelineView: View {
         switch item {
         case .block(let b):
             let s = catStyle(for: b.category, custom: customCats)
-            return ShareItem(time: clock(b.start), title: b.title.isEmpty ? s.name : b.title,
+            return ShareItem(time: clock(b.start), name: s.name, title: b.title,
                              sub: "\(clock(b.start))-\(clock(b.end)) · \(formatDuration(b.duration))", color: s.color)
         case .idle(let st, let e):
-            return ShareItem(time: clock(st), title: "空闲", sub: formatDuration(e.timeIntervalSince(st)), color: nil)
+            return ShareItem(time: clock(st), name: "空闲", sub: formatDuration(e.timeIntervalSince(st)), color: nil)
         case .empty(let hs):
-            return ShareItem(time: clock(hs), title: "空闲", sub: "1小时", color: nil)
+            return ShareItem(time: clock(hs), name: "空闲", sub: "1小时", color: nil)
         }
     }
 

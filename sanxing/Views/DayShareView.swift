@@ -2,13 +2,14 @@
 import SwiftUI
 import UIKit
 
-// 一行：天分隔标题（dayHeader 非空）/ 块（带分类色）/ 空闲（color == nil）
+// 一行：天分隔标题（dayHeader 非空）/ 块（color 非空，name=分类名、title=块自己的标题）/ 空闲（color==nil）
 struct ShareItem: Identifiable {
     let id = UUID()
     var dayHeader: String? = nil
     var time: String = ""
-    var title: String = ""
-    var sub: String = ""
+    var name: String = ""       // 分类名 / 「空闲」
+    var title: String = ""      // 块自己的标题（可空，受「显示标题」开关控制）
+    var sub: String = ""        // 时间段 · 时长
     var color: Color? = nil
 }
 
@@ -16,6 +17,7 @@ struct ShareItem: Identifiable {
 struct DayShareView: View {
     let title: String
     let items: [ShareItem]
+    var showTitle: Bool = false   // 是否显示块标题
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
@@ -25,21 +27,29 @@ struct DayShareView: View {
                     Text(dh).font(.subheadline).bold()
                         .foregroundStyle(.secondary)
                         .padding(.top, 8)
+                } else if let c = it.color {
+                    HStack(alignment: .top, spacing: 10) {
+                        Text(it.time).font(.caption).monospacedDigit()
+                            .foregroundStyle(.secondary)
+                            .frame(width: 44, alignment: .leading)
+                        RoundedRectangle(cornerRadius: 3).fill(c).frame(width: 4)
+                        VStack(alignment: .leading, spacing: 2) {
+                            if showTitle && !it.title.isEmpty {
+                                Text(it.title).font(.subheadline)
+                            }
+                            HStack(spacing: 6) {
+                                Text(it.name).font(.caption2).foregroundStyle(c)
+                                Text("· \(it.sub)").font(.caption2).foregroundStyle(.secondary)
+                            }
+                        }
+                        Spacer(minLength: 0)
+                    }
                 } else {
                     HStack(alignment: .top, spacing: 10) {
                         Text(it.time).font(.caption).monospacedDigit()
                             .foregroundStyle(.secondary)
                             .frame(width: 44, alignment: .leading)
-                        if let c = it.color {
-                            RoundedRectangle(cornerRadius: 3).fill(c).frame(width: 4)
-                            VStack(alignment: .leading, spacing: 2) {
-                                Text(it.title).font(.subheadline)
-                                Text(it.sub).font(.caption2).foregroundStyle(.secondary)
-                            }
-                        } else {
-                            Text("空闲 · \(it.sub)").font(.caption).foregroundStyle(.tertiary)
-                                .padding(.top, 1)
-                        }
+                        Text("空闲 · \(it.sub)").font(.caption).foregroundStyle(.tertiary)
                         Spacer(minLength: 0)
                     }
                 }
@@ -51,11 +61,16 @@ struct DayShareView: View {
     }
 }
 
-// 预览 + 分享面板：先看到生成的图，再点「分享」走系统分享
+// 预览 + 分享面板：左上勾选「显示标题」（默认不显示），即时重渲染
 struct SharePreviewSheet: View {
-    let image: UIImage?     // nil = 渲染中
-    var jsonText: String? = nil   // 可复制的 JSON 数据
+    let title: String
+    let items: [ShareItem]
+    let scheme: ColorScheme
+    var jsonText: String? = nil
+
     @Environment(\.dismiss) private var dismiss
+    @State private var showTitle = false
+    @State private var image: UIImage?
     @State private var copied = false
 
     var body: some View {
@@ -75,16 +90,19 @@ struct SharePreviewSheet: View {
             .navigationTitle("分享预览")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
-                ToolbarItem(placement: .cancellationAction) { Button("取消") { dismiss() } }
+                ToolbarItemGroup(placement: .topBarLeading) {
+                    Button("取消") { dismiss() }
+                    Button { showTitle.toggle() } label: {   // 勾选框：是否显示标题
+                        Label("标题", systemImage: showTitle ? "checkmark.square.fill" : "square")
+                    }
+                }
                 ToolbarItemGroup(placement: .topBarTrailing) {
-                    // 复制 JSON（在分享左侧）
                     Button {
                         if let j = jsonText { UIPasteboard.general.string = j; copied = true }
                     } label: {
                         Image(systemName: copied ? "checkmark" : "doc.on.doc")
                     }
                     .disabled(jsonText == nil)
-                    // 分享（图标）
                     if let image {
                         ShareLink(item: Image(uiImage: image),
                                   preview: SharePreview("时间轴", image: Image(uiImage: image))) {
@@ -93,6 +111,16 @@ struct SharePreviewSheet: View {
                     }
                 }
             }
+            .onAppear { render() }
+            .onChange(of: showTitle) { _, _ in render() }
         }
+    }
+
+    private func render() {
+        let r = ImageRenderer(content:
+            DayShareView(title: title, items: items, showTitle: showTitle)
+                .environment(\.colorScheme, scheme))
+        r.scale = 2
+        image = r.uiImage
     }
 }
