@@ -19,6 +19,11 @@ extension Date {
     var dayTitle: String {
         formatted(.dateTime.month(.wide).day().weekday(.wide).locale(Locale(identifier: "zh_CN")))
     }
+
+    /// "6月20日"（不含星期几）
+    var monthDay: String {
+        formatted(.dateTime.month(.wide).day().locale(Locale(identifier: "zh_CN")))
+    }
 }
 
 /// 时长格式化："1小时30分" / "45分钟"

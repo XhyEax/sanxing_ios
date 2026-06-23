@@ -375,9 +375,6 @@ struct TimelineView: View {
         } else {
             ToolbarItemGroup(placement: .navigationBarLeading) {
                 dayNav
-                Button { datePickerDay = focusedDay; showDatePicker = true } label: {
-                    Image(systemName: "calendar")
-                }
                 Button { ctx.undoManager?.undo() } label: {
                     Image(systemName: "arrow.uturn.backward")
                 }
@@ -706,8 +703,8 @@ struct TimelineView: View {
     private var dayNav: some View {
         HStack(spacing: 12) {
             Button { goToDay(focusedDay.addingDays(-1)) } label: { Image(systemName: "chevron.left") }
-            Button { goToDay(.now) } label: {
-                Text(focusedDay.isSameDay(as: .now) ? "今天" : focusedDay.dayTitle)
+            Button { datePickerDay = focusedDay; showDatePicker = true } label: {   // 点日期 → 选日期
+                Text(focusedDay.isSameDay(as: .now) ? "今天" : focusedDay.monthDay)
                     .font(.subheadline).bold().lineLimit(1).fixedSize()
             }
             .buttonStyle(.plain)
