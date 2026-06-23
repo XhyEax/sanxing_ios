@@ -24,6 +24,7 @@ private struct DayFrameKey: PreferenceKey {
 private final class DayBlocksCache { var byDay: [Date: [TimeBlock]] = [:] }
 
 struct TimelineView: View {
+    var goTodayTrigger: Int = 0   // 点「时间轴」Tab 时 +1 → 跳当前第一个空闲
 
     @Environment(\.modelContext) private var ctx
     @Query(sort: \TimeBlock.start, order: .forward) private var allBlocks: [TimeBlock]
@@ -200,6 +201,7 @@ struct TimelineView: View {
             .onPreferenceChange(DayFrameKey.self) { dayFrames = $0; updateFocusedDay($0) }
             .highPriorityGesture(selectDragGesture)
             .onAppear { setupIfNeeded() }
+            .onChange(of: goTodayTrigger) { _, _ in scrollToToday() }
             .navigationTitle(selectionMode ? "已选 \(totalSelected)" : "今日")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar { toolbarContent }
@@ -229,11 +231,10 @@ struct TimelineView: View {
             .confirmationDialog("时间重叠", isPresented: Binding(
                 get: { overlap != nil }, set: { if !$0 { overlap = nil } }
             ), titleVisibility: .visible, presenting: overlap) { p in
-                Button("把「\(blockName(p.later))」开始改到 \(clock(p.earlier.end))") { resolveMovingLater(p) }
-                Button("把「\(blockName(p.earlier))」结束改到 \(clock(p.later.start))") { resolveMovingEarlier(p) }
-                Button("不修改", role: .cancel) { overlap = nil }
+                Button("同步修改开始和结束时间") { resolveSync(p) }
+                Button("撤销修改", role: .cancel) { ctx.undoManager?.undo(); overlap = nil }
             } message: { p in
-                Text("「\(blockName(p.earlier))」(到 \(clock(p.earlier.end))) 与「\(blockName(p.later))」(\(clock(p.later.start)) 起) 重叠，是否同步调整？")
+                Text("「\(blockName(p.earlier))」(到 \(clock(p.earlier.end))) 与「\(blockName(p.later))」(\(clock(p.later.start)) 起) 重叠。")
             }
             .sheet(isPresented: $showDatePicker) {
                 NavigationStack {
@@ -291,17 +292,14 @@ struct TimelineView: View {
         b.title.isEmpty ? catStyle(for: b.category, custom: customCats).name : b.title
     }
 
-    // 顺移后块：后块开始改到前块结束（被完全覆盖则删除）
-    private func resolveMovingLater(_ p: OverlapPair) {
-        if p.earlier.end < p.later.end { p.later.start = p.earlier.end } else { ctx.delete(p.later) }
+    // 同步修改：把前块结束 + 后块开始一起挪到重叠区间的中点，两块刚好相接、不再重叠
+    private func resolveSync(_ p: OverlapPair) {
+        let lo = p.later.start, hi = p.earlier.end
+        let mid = lo.addingTimeInterval(hi.timeIntervalSince(lo) / 2)
+        p.earlier.end = mid
+        if mid < p.later.end { p.later.start = mid } else { ctx.delete(p.later) }   // 后块被完全覆盖则删除
         overlap = nil
         afterEdit()   // 继续规整并检测下一处重叠
-    }
-    // 缩短前块：前块结束改到后块开始（变空则删除）
-    private func resolveMovingEarlier(_ p: OverlapPair) {
-        if p.earlier.start < p.later.start { p.earlier.end = p.later.start } else { ctx.delete(p.earlier) }
-        overlap = nil
-        afterEdit()
     }
 
     // MARK: - 天头（白线分割 + 日期 + 当天小结）
@@ -723,6 +721,17 @@ struct TimelineView: View {
         days = (-Self.windowRadius...Self.windowRadius).map { t.addingDays($0) }
         focusedDay = t
         scrolledID = firstFreeHourStart() ?? visibleHourStarts(of: t).first   // 首屏直接定位（scrollPosition）
+    }
+
+    // 点「时间轴」Tab：定位今天「当前第一个空闲」行。用 scrollPosition 直接落位，不经过窗口顶部。
+    private func scrollToToday() {
+        let t = Date.now.startOfDay
+        if t < (days.first ?? t) || t > (days.last ?? t) {   // 目标在窗口外 → 以今天为中心重建
+            days = (-Self.windowRadius...Self.windowRadius).map { t.addingDays($0) }
+        }
+        focusedDay = t
+        let target = firstFreeHourStart() ?? visibleHourStarts(of: t).first
+        DispatchQueue.main.async { scrolledID = target }   // 让窗口/行先就绪再定位
     }
 
     // 今天从当前钟点起、第一个含空闲（空整点或小空闲段）的行
