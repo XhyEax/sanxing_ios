@@ -231,7 +231,11 @@ struct TimelineView: View {
             .confirmationDialog("时间重叠", isPresented: Binding(
                 get: { overlap != nil }, set: { if !$0 { overlap = nil } }
             ), titleVisibility: .visible, presenting: overlap) { p in
-                Button("同步修改开始和结束时间") { resolveSync(p) }
+                if let covered = coveredBlock(p) {   // 完全吞没：只能删除被覆盖的那个
+                    Button("修改并删除「\(blockName(covered))」", role: .destructive) { resolveDeleteCovered(covered) }
+                } else {                              // 部分重叠：两块相接即可
+                    Button("同步修改开始和结束时间") { resolveSync(p) }
+                }
                 Button("撤销修改", role: .cancel) { ctx.undoManager?.undo(); overlap = nil }
             } message: { p in
                 Text("「\(blockName(p.earlier))」(到 \(clock(p.earlier.end))) 与「\(blockName(p.later))」(\(clock(p.later.start)) 起) 重叠。")
@@ -292,14 +296,28 @@ struct TimelineView: View {
         b.title.isEmpty ? catStyle(for: b.category, custom: customCats).name : b.title
     }
 
-    // 同步修改：把前块结束 + 后块开始一起挪到重叠区间的中点，两块刚好相接、不再重叠
+    // 一方完全吞没另一方时，返回被覆盖（区间被完全包含）的那个块；否则 nil（部分重叠）
+    private func coveredBlock(_ p: OverlapPair) -> TimeBlock? {
+        if p.earlier.start <= p.later.start && p.earlier.end >= p.later.end { return p.later }
+        if p.later.start <= p.earlier.start && p.later.end >= p.earlier.end { return p.earlier }
+        return nil
+    }
+
+    // 部分重叠：把前块结束 + 后块开始一起挪到重叠区间的中点，两块刚好相接、不再重叠
     private func resolveSync(_ p: OverlapPair) {
         let lo = p.later.start, hi = p.earlier.end
         let mid = lo.addingTimeInterval(hi.timeIntervalSince(lo) / 2)
         p.earlier.end = mid
-        if mid < p.later.end { p.later.start = mid } else { ctx.delete(p.later) }   // 后块被完全覆盖则删除
+        p.later.start = mid
         overlap = nil
         afterEdit()   // 继续规整并检测下一处重叠
+    }
+
+    // 完全吞没：删除被覆盖的块，保留吞没它的块
+    private func resolveDeleteCovered(_ covered: TimeBlock) {
+        ctx.delete(covered)
+        overlap = nil
+        afterEdit()
     }
 
     // MARK: - 天头（白线分割 + 日期 + 当天小结）
