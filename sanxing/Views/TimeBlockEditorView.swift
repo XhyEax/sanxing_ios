@@ -17,6 +17,7 @@ struct TimeBlockEditorView: View {
     @State private var end: Date
     @State private var durationMinutes: Int
     @State private var note: String
+    @State private var toast: String?   // 轻提示（如「请选择分类」）
 
     // 新建：默认时长 1 小时。指定 hour 则从该整点起；否则当天用当前整点、他天用 9 点
     init(day: Date, hour: Int? = nil) {
@@ -31,7 +32,7 @@ struct TimeBlockEditorView: View {
             base = cal.date(bySettingHour: 9, minute: 0, second: 0, of: day.startOfDay) ?? day.startOfDay
         }
         _title = State(initialValue: "")
-        _categoryKey = State(initialValue: BlockCategory.think.rawValue)
+        _categoryKey = State(initialValue: "")   // 默认未选分类，保存时强制选择
         _start = State(initialValue: base)
         _end = State(initialValue: base.addingTimeInterval(3600))
         _durationMinutes = State(initialValue: 60)
@@ -42,7 +43,7 @@ struct TimeBlockEditorView: View {
     init(start: Date, end: Date) {
         existing = nil
         _title = State(initialValue: "")
-        _categoryKey = State(initialValue: BlockCategory.think.rawValue)
+        _categoryKey = State(initialValue: "")   // 默认未选分类，保存时强制选择
         _start = State(initialValue: start)
         _end = State(initialValue: end)
         let mins = Int(end.timeIntervalSince(start) / 60)
@@ -104,18 +105,16 @@ struct TimeBlockEditorView: View {
             .toolbar {
                 ToolbarItemGroup(placement: .topBarLeading) {
                     Button("取消") { dismiss() }
-                    // 终止：只对已有块（编辑态）显示；从空闲新建块时不显示
-                    if existing != nil {
-                        Button {
-                            guard Date.now > start else { return }
-                            end = Date.now
-                            save()
-                        } label: {
-                            Image(systemName: "stop.circle")
-                        }
-                        .tint(.red)
-                        .disabled(Date.now <= start)
+                    // 终止：结束改为现在并保存（新建/编辑都显示）
+                    Button {
+                        guard Date.now > start else { return }
+                        end = Date.now
+                        save()
+                    } label: {
+                        Image(systemName: "stop.circle")
                     }
+                    .tint(.red)
+                    .disabled(Date.now <= start)
                 }
                 ToolbarItemGroup(placement: .topBarTrailing) {
                     if existing != nil {
@@ -125,10 +124,28 @@ struct TimeBlockEditorView: View {
                     Button("保存") { save() }.fontWeight(.semibold).disabled(end <= start)
                 }
             }
+            .overlay(alignment: .bottom) {
+                if let t = toast {
+                    Text(t)
+                        .font(.subheadline)
+                        .padding(.horizontal, 16).padding(.vertical, 10)
+                        .background(.ultraThinMaterial, in: Capsule())
+                        .padding(.bottom, 40)
+                        .transition(.opacity)
+                }
+            }
+        }
+    }
+
+    private func showToast(_ msg: String) {
+        withAnimation { toast = msg }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1.6) {
+            withAnimation { toast = nil }
         }
     }
 
     private func save() {
+        guard !categoryKey.isEmpty else { showToast("请选择分类"); return }
         if let b = existing {
             b.title = title; b.category = categoryKey
             b.start = start; b.end = end; b.note = note
