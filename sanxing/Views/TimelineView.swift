@@ -245,14 +245,20 @@ struct TimelineView: View {
             .confirmationDialog("时间重叠", isPresented: Binding(
                 get: { overlap != nil }, set: { if !$0 { overlap = nil } }
             ), titleVisibility: .visible, presenting: overlap) { p in
-                if let covered = coveredBlock(p) {   // 完全吞没：只能删除被覆盖的那个
-                    Button("修改并删除「\(blockName(covered))」", role: .destructive) { resolveDeleteCovered(covered) }
-                } else {                              // 部分重叠：两块相接即可
+                let covered = coveredBlocks(p)
+                if covered.isEmpty {                  // 部分重叠：两块相接即可
                     Button("同步修改开始和结束时间") { resolveSync(p) }
+                } else {                              // 完全吞没（可能多个）：删除被覆盖的块
+                    Button(deleteCoveredLabel(covered), role: .destructive) { resolveDeleteCovered(covered) }
                 }
                 Button("撤销修改", role: .cancel) { ctx.undoManager?.undo(); overlap = nil }
             } message: { p in
-                Text("「\(blockName(p.earlier))」(到 \(clock(p.earlier.end))) 与「\(blockName(p.later))」(\(clock(p.later.start)) 起) 重叠。")
+                let covered = coveredBlocks(p)
+                if covered.isEmpty {
+                    Text("「\(blockName(p.earlier))」(到 \(clock(p.earlier.end))) 与「\(blockName(p.later))」(\(clock(p.later.start)) 起) 重叠。")
+                } else {
+                    Text("以下块被完全覆盖，将一并删除：" + covered.map { "「\(blockName($0))」" }.joined())
+                }
             }
             .sheet(isPresented: $showDatePicker) {
                 NavigationStack {
@@ -310,11 +316,23 @@ struct TimelineView: View {
         b.title.isEmpty ? catStyle(for: b.category, custom: customCats).name : b.title
     }
 
-    // 一方完全吞没另一方时，返回被覆盖（区间被完全包含）的那个块；否则 nil（部分重叠）
-    private func coveredBlock(_ p: OverlapPair) -> TimeBlock? {
-        if p.earlier.start <= p.later.start && p.earlier.end >= p.later.end { return p.later }
-        if p.later.start <= p.earlier.start && p.later.end >= p.earlier.end { return p.earlier }
+    // 这一对里完全吞没另一方的那个块（区间完全包含对方）；都不包含则 nil（部分重叠）
+    private func covererOf(_ p: OverlapPair) -> TimeBlock? {
+        if p.earlier.start <= p.later.start && p.earlier.end >= p.later.end { return p.earlier }
+        if p.later.start <= p.earlier.start && p.later.end >= p.earlier.end { return p.later }
         return nil
+    }
+    // 被这个吞没块完全覆盖的所有块（可能多个），按开始排序
+    private func coveredBlocks(_ p: OverlapPair) -> [TimeBlock] {
+        guard let cover = covererOf(p) else { return [] }
+        return allBlocks
+            .filter { $0.id != cover.id && cover.start <= $0.start && cover.end >= $0.end }
+            .sorted { $0.start < $1.start }
+    }
+    // 删除按钮文案：「修改并删除「A」「B」」；超过 2 个则「…等N个」
+    private func deleteCoveredLabel(_ blocks: [TimeBlock]) -> String {
+        let shown = blocks.prefix(2).map { "「\(blockName($0))」" }.joined()
+        return "修改并删除\(shown)" + (blocks.count > 2 ? "等\(blocks.count)个" : "")
     }
 
     // 部分重叠：把前块结束 + 后块开始一起挪到重叠区间的中点，两块刚好相接、不再重叠
@@ -327,9 +345,9 @@ struct TimelineView: View {
         afterEdit()   // 继续规整并检测下一处重叠
     }
 
-    // 完全吞没：删除被覆盖的块，保留吞没它的块
-    private func resolveDeleteCovered(_ covered: TimeBlock) {
-        ctx.delete(covered)
+    // 完全吞没：删除全部被覆盖的块，保留吞没它们的块
+    private func resolveDeleteCovered(_ covered: [TimeBlock]) {
+        for b in covered { ctx.delete(b) }
         overlap = nil
         afterEdit()
     }
