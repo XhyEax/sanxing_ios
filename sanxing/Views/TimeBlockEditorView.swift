@@ -114,7 +114,7 @@ struct TimeBlockEditorView: View {
                         Image(systemName: "stop.circle")
                     }
                     .tint(.red)
-                    .disabled(Date.now <= start)
+                    .disabled(Date.now <= start || categoryKey.isEmpty)
                 }
                 ToolbarItemGroup(placement: .topBarTrailing) {
                     if existing != nil {
