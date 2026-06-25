@@ -1,6 +1,7 @@
 // Views/DiaryView.swift — 日记：按天分组，倒序展示
 import SwiftUI
 import SwiftData
+import UIKit
 
 struct DiaryView: View {
     @Environment(\.modelContext) private var ctx
@@ -29,6 +30,12 @@ struct DiaryView: View {
                                 ForEach(group.items) { entry in
                                     Button { editing = entry } label: { row(entry) }
                                         .buttonStyle(.plain)
+                                        .contextMenu {
+                                            Button {
+                                                UIPasteboard.general.string = entry.text
+                                            } label: { Label("复制", systemImage: "doc.on.doc") }
+                                            .disabled(entry.text.isEmpty)
+                                        }
                                 }
                                 .onDelete { deleteIn(group.items, $0) }
                             }
