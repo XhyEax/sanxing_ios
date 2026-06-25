@@ -62,7 +62,11 @@ struct TimelineView: View {
         switch colorSchemeIndex { case 1: return .light; case 2: return .dark; default: return systemScheme }
     }
 
-    private struct NewBlock: Identifiable { let start: Date; let end: Date; var id: Date { start } }
+    private struct NewBlock: Identifiable {
+        let start: Date; let end: Date
+        var absorbAboveID: PersistentIdentifier? = nil   // 「新建并合并上方块」：保存时删除该上方块
+        var id: Date { start }
+    }
     private struct OverlapPair: Identifiable { let id = UUID(); let earlier: TimeBlock; let later: TimeBlock }
     private struct IdleRange: Hashable { let start: Date; let end: Date }
     // 块在某一天里的「片段」：跨天块裁到当天 [start,end]；底层仍是同一条 block 记录
@@ -238,8 +242,9 @@ struct TimelineView: View {
             } message: {
                 Text("将选中的块合并成一个，保留所选块的标题/分类/备注，范围覆盖全部。")
             }
-            .sheet(item: $newBlock, onDismiss: afterEdit) {
-                TimeBlockEditorView(start: $0.start, end: $0.end)
+            .sheet(item: $newBlock, onDismiss: afterEdit) { nb in
+                let absorb = nb.absorbAboveID.flatMap { id in allBlocks.first { $0.id == id } }
+                TimeBlockEditorView(start: nb.start, end: nb.end, absorbing: absorb)
             }
             .sheet(item: $editing, onDismiss: afterEdit) { TimeBlockEditorView(block: $0) }
             .confirmationDialog("时间重叠", isPresented: Binding(
@@ -630,6 +635,11 @@ struct TimelineView: View {
             Button { n.start = min(n.start, s); afterEdit() } label: { Label("合并到下方", systemImage: "arrow.down.to.line") }
         }
         Button { newBlock = NewBlock(start: s, end: e) } label: { Label("新建块", systemImage: "plus") }
+        if let p = blockAbove(s) {   // 新建块覆盖「上方块起点…本空闲末」，保存后吃掉上方块
+            Button { newBlock = NewBlock(start: p.start, end: e, absorbAboveID: p.id) } label: {
+                Label("新建并合并上方块", systemImage: "plus.square.on.square")
+            }
+        }
     }
     // 此空闲上方最近的块（结束 ≤ s，取最晚结束）；中间只会是连续空闲，合并即吃掉它们
     private func blockAbove(_ s: Date) -> TimeBlock? {

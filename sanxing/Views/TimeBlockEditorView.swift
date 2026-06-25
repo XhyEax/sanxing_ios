@@ -11,6 +11,7 @@ struct TimeBlockEditorView: View {
     private static let presetMinutes = [15, 30, 45, 60]
 
     private let existing: TimeBlock?
+    private let absorbing: TimeBlock?   // 新建时一并删除的「上方块」（新建并合并上方块）
     @State private var title: String
     @State private var categoryKey: String
     @State private var start: Date
@@ -22,6 +23,7 @@ struct TimeBlockEditorView: View {
     // 新建：默认时长 1 小时。指定 hour 则从该整点起；否则当天用当前整点、他天用 9 点
     init(day: Date, hour: Int? = nil) {
         existing = nil
+        absorbing = nil
         let cal = Calendar.current
         let base: Date
         if let h = hour {
@@ -39,9 +41,10 @@ struct TimeBlockEditorView: View {
         _note = State(initialValue: "")
     }
 
-    // 新建：指定精确起止（点空闲段建块用）
-    init(start: Date, end: Date) {
+    // 新建：指定精确起止（点空闲段建块用）。absorbing 非空时保存后删除它（新建并合并上方块）
+    init(start: Date, end: Date, absorbing: TimeBlock? = nil) {
         existing = nil
+        self.absorbing = absorbing
         _title = State(initialValue: "")
         _categoryKey = State(initialValue: "")   // 默认未选分类，保存时强制选择
         _start = State(initialValue: start)
@@ -54,6 +57,7 @@ struct TimeBlockEditorView: View {
     // 编辑
     init(block: TimeBlock) {
         existing = block
+        absorbing = nil
         _title = State(initialValue: block.title)
         _categoryKey = State(initialValue: block.category)
         _start = State(initialValue: block.start)
@@ -152,6 +156,7 @@ struct TimeBlockEditorView: View {
         } else {
             ctx.insert(TimeBlock(start: start, end: end, title: title,
                                  category: categoryKey, note: note))
+            if let a = absorbing { ctx.delete(a) }   // 新建并合并上方块：删掉被覆盖的上方块
         }
         dismiss()
     }
