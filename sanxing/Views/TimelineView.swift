@@ -38,6 +38,10 @@ private final class DayBlocksCache {
     var signature: Int?           // 块集合的指纹；未变则跨帧保留上面三份备忘
 }
 
+// 天 header 的视口位置。引用类型存放：滚动时每帧更新但不触发 body 重渲染
+// （仅 visibleDays/shareRange 在分享时读取；焦点天由 updateFocusedDay 单独驱动）
+private final class FrameBox { var dayFrames: [Date: CGRect] = [:] }
+
 struct TimelineView: View {
     var goTodayTrigger: Int = 0   // 点「时间轴」Tab 时 +1 → 跳当前第一个空闲
 
@@ -59,7 +63,7 @@ struct TimelineView: View {
     @State private var datePickerDay = Date.now
 
     @State private var rowFrames: [Date: CGRect] = [:]
-    @State private var dayFrames: [Date: CGRect] = [:]   // 各天 header 在视口中的位置（判可见天）
+    @State private var frameBox = FrameBox()             // 各天 header 在视口中的位置（不触发重渲染）
     @State private var dragAnchor: Date?
     @State private var scrolledID: Date?            // scrollPosition：当前顶部行/滚动目标（hour-start）
     @State private var overlap: OverlapPair?        // 编辑后检测到的重叠，弹窗让用户选择如何处理
@@ -235,7 +239,7 @@ struct TimelineView: View {
             .scrollPosition(id: $scrolledID, anchor: .top)
             .coordinateSpace(name: "timeline")
             .onPreferenceChange(RowFrameKey.self) { rowFrames = $0 }
-            .onPreferenceChange(DayFrameKey.self) { dayFrames = $0; updateFocusedDay($0) }
+            .onPreferenceChange(DayFrameKey.self) { frameBox.dayFrames = $0; updateFocusedDay($0) }
             .highPriorityGesture(selectDragGesture)
             .onAppear { setupIfNeeded() }
             .onChange(of: goTodayTrigger) { _, _ in scrollToToday() }
@@ -498,8 +502,8 @@ struct TimelineView: View {
         let vh = UIScreen.main.bounds.height
         var result: [Date] = []
         for (i, d) in days.enumerated() {
-            guard let top = dayFrames[d]?.minY else { continue }
-            let bottom = (i + 1 < days.count ? dayFrames[days[i + 1]]?.minY : nil) ?? .greatestFiniteMagnitude
+            guard let top = frameBox.dayFrames[d]?.minY else { continue }
+            let bottom = (i + 1 < days.count ? frameBox.dayFrames[days[i + 1]]?.minY : nil) ?? .greatestFiniteMagnitude
             if top < vh && bottom > 0 { result.append(d) }   // 该天区段与视口相交
         }
         return result
