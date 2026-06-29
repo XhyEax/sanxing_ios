@@ -222,6 +222,7 @@ struct TimelineView: View {
     var body: some View {
         rebuildDayCache()   // 每次渲染重建：每个块落进它覆盖的每一天（跨天块多天）
         return NavigationStack {
+          ScrollViewReader { proxy in
             ScrollView {
                 LazyVStack(spacing: 0) {
                     ForEach(days, id: \.self) { day in
@@ -254,7 +255,7 @@ struct TimelineView: View {
             .onPreferenceChange(DayFrameKey.self) { frameBox.dayFrames = $0; updateFocusedDay($0) }
             .highPriorityGesture(selectDragGesture)
             .onAppear { setupIfNeeded() }
-            .onChange(of: goTodayTrigger) { _, _ in scrollToToday() }
+            .onChange(of: goTodayTrigger) { _, _ in scrollToToday(proxy) }
             .navigationTitle(selectionMode ? "已选 \(totalSelected)" : "今日")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar { toolbarContent }
@@ -339,6 +340,7 @@ struct TimelineView: View {
                 SharePreviewSheet(image: shareImage, title: shareTitle, items: shareRows,
                                   scheme: effectiveScheme)
             }
+          }
         }
     }
 
@@ -885,16 +887,25 @@ struct TimelineView: View {
         return cal.date(bySettingHour: cal.component(.hour, from: target), minute: 0, second: 0, of: t)
     }
 
-    // 点「时间轴」Tab：以今天为中心重建窗口并定位到今天 0 点
-    private func scrollToToday() {
+    // 点「时间轴」Tab：把「当前时间所在的块/整点」滚到视图中央
+    private func scrollToToday(_ proxy: ScrollViewProxy) {
         let t = Date.now.startOfDay
-        days = (-Self.windowRadius...Self.windowRadius).map { t.addingDays($0) }
+        days = (-Self.windowRadius...Self.windowRadius).map { t.addingDays($0) }   // 今天居中重建
         focusedDay = t
-        let target = visibleHourStarts(of: t).first   // 今天首个可见整点（即 0 点）
-        DispatchQueue.main.async {
-            var tx = Transaction(); tx.disablesAnimations = true
-            withTransaction(tx) { scrolledID = target }
+        let target = nowRowID()
+        DispatchQueue.main.async {   // 等窗口/行就绪再居中定位（无动画）
+            proxy.scrollTo(target, anchor: .center)
         }
+    }
+
+    // 当前时刻所在的行 id（整点 hour-start）：优先取覆盖 now 的块所在整点，否则取 now 的整点
+    private func nowRowID() -> Date {
+        let t = Date.now.startOfDay
+        let now = Date.now
+        if let seg = segs(of: t).first(where: { $0.start <= now && $0.end > now }) {
+            return cal.date(bySettingHour: cal.component(.hour, from: seg.start), minute: 0, second: 0, of: t) ?? nowHourStart
+        }
+        return nowHourStart
     }
 
     // 今天从当前钟点起、第一个含空闲（空整点或小空闲段）的行
