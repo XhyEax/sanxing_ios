@@ -44,7 +44,6 @@ private final class FrameBox { var dayFrames: [Date: CGRect] = [:] }
 
 struct TimelineView: View {
     var goTodayTrigger: Int = 0   // 点「时间轴」Tab 时 +1 → 跳当前第一个空闲
-    @Binding var selecting: Bool  // 多选态上报给外层（用于隐藏自定义底栏）
 
     @Environment(\.modelContext) private var ctx
     @Query(sort: \TimeBlock.start, order: .forward) private var allBlocks: [TimeBlock]
@@ -262,7 +261,6 @@ struct TimelineView: View {
             .safeAreaInset(edge: .bottom, spacing: 0) {
                 if selectionMode { selectionBar }
             }
-            .onChange(of: selectionMode) { _, v in selecting = v }
             .sheet(isPresented: $showFillDialog) {
                 NavigationStack {
                     ScrollView {
@@ -436,8 +434,7 @@ struct TimelineView: View {
     private var selectionBar: some View {
         HStack(spacing: 0) {
             Button { showFillDialog = true } label: {
-                Label("填充\(selectedIdleCount == 0 ? "" : " \(selectedIdleCount)")",
-                      systemImage: "rectangle.fill.badge.plus")
+                Image(systemName: "rectangle.fill.badge.plus")
             }
             .disabled(selectedIdleCount == 0)
             if let b = singleBlock {
@@ -468,7 +465,7 @@ struct TimelineView: View {
             }
             Spacer()
             Button(role: .destructive) { deleteSelected() } label: {
-                Label("删除\(selected.isEmpty ? "" : " \(selected.count)")", systemImage: "trash")
+                Image(systemName: "trash")
             }
             .disabled(selected.isEmpty)
         }

@@ -11,7 +11,6 @@ import SwiftData
 struct MainTabView: View {
     @State private var selection = 0
     @State private var todayTrigger = 0   // 点「时间轴」→ 回今天
-    @State private var timelineSelecting = false   // 时间轴多选态 → 隐藏底栏，让选择操作栏占位
 
     private struct TabDef { let id: Int; let name: String; let icon: String }
     private let tabs = [
@@ -25,7 +24,7 @@ struct MainTabView: View {
         // 时间轴常驻（保留滚动/状态）；其它页按需渲染并叠在最上层。
         // 关键：可见页始终是最上层（或唯一一个），避免「被其它 NavigationStack 压在下面」导致的整体左移。
         ZStack {
-            TimelineView(goTodayTrigger: todayTrigger, selecting: $timelineSelecting)
+            TimelineView(goTodayTrigger: todayTrigger)
                 .opacity(selection == 0 ? 1 : 0)
                 .allowsHitTesting(selection == 0)
             if selection != 0 {
@@ -40,9 +39,7 @@ struct MainTabView: View {
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .safeAreaInset(edge: .bottom, spacing: 0) {
-            if !(selection == 0 && timelineSelecting) { bottomBar }   // 时间轴多选时让位给选择操作栏
-        }
+        .safeAreaInset(edge: .bottom, spacing: 0) { bottomBar }
     }
 
     private var bottomBar: some View {
