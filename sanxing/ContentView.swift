@@ -21,21 +21,14 @@ struct MainTabView: View {
     ]
 
     var body: some View {
-        // 时间轴常驻（保留滚动/状态）；其它页按需渲染并叠在最上层。
-        // 关键：可见页始终是最上层（或唯一一个），避免「被其它 NavigationStack 压在下面」导致的整体左移。
-        ZStack {
-            TimelineView(goTodayTrigger: todayTrigger)
-                .opacity(selection == 0 ? 1 : 0)
-                .allowsHitTesting(selection == 0)
-            if selection != 0 {
-                Group {
-                    switch selection {
-                    case 1: DiaryView()
-                    case 2: StatsView()
-                    default: SettingsView()
-                    }
-                }
-                .transition(.identity)
+        // 只渲染当前页：ZStack 同时存在多个 NavigationStack 会让时间轴布局错乱（左移，
+        // 需滚动才恢复）。单页渲染彻底规避；代价是切换页面不保留各页滚动位置。
+        Group {
+            switch selection {
+            case 0: TimelineView(goTodayTrigger: todayTrigger)
+            case 1: DiaryView()
+            case 2: StatsView()
+            default: SettingsView()
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
