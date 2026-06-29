@@ -15,7 +15,7 @@ struct CategoryGrid: View {
     @State private var creating = false
     @State private var editingCustom: CustomCategory?
 
-    private let columns = Array(repeating: GridItem(.flexible()), count: 3)
+    private let columns = Array(repeating: GridItem(.flexible()), count: 4)
 
     var body: some View {
         LazyVGrid(columns: columns, spacing: 10) {
