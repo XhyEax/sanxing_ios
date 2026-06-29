@@ -20,6 +20,9 @@ struct DiaryView: View {
     @State private var focusedDay = Date.now.startOfDay   // 顶部导航当前天
     @State private var showDatePicker = false
     @State private var datePickerDay = Date.now
+    @State private var showSearch = false
+    @State private var searchText = ""
+    @State private var searchEditing: DiaryEntry?
 
     // 按自然日分组，日期倒序
     private var groups: [(day: Date, items: [DiaryEntry])] {
@@ -71,6 +74,9 @@ struct DiaryView: View {
                 .navigationBarTitleDisplayMode(.inline)
                 .toolbar {
                     if !entries.isEmpty {
+                        ToolbarItem(placement: .navigationBarLeading) {
+                            Button { showSearch = true } label: { Image(systemName: "magnifyingglass") }
+                        }
                         ToolbarItem(placement: .principal) { dayNav(proxy) }
                     }
                     ToolbarItem(placement: .navigationBarTrailing) {
@@ -101,6 +107,46 @@ struct DiaryView: View {
             }
             .sheet(isPresented: $showNew) { DiaryEditorView() }
             .sheet(item: $editing) { DiaryEditorView(entry: $0) }
+            .sheet(isPresented: $showSearch) { searchSheet }
+        }
+    }
+
+    // 搜索日记正文
+    private var searchResults: [DiaryEntry] {
+        let q = searchText.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !q.isEmpty else { return [] }
+        return entries.filter { $0.text.localizedCaseInsensitiveContains(q) }   // entries 已按时间倒序
+    }
+
+    private var searchSheet: some View {
+        NavigationStack {
+            Group {
+                if searchText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                    ContentUnavailableView("搜索日记", systemImage: "magnifyingglass",
+                        description: Text("输入关键词查找正文"))
+                } else if searchResults.isEmpty {
+                    ContentUnavailableView.search(text: searchText)
+                } else {
+                    List(searchResults) { e in
+                        Button { searchEditing = e } label: {
+                            VStack(alignment: .leading, spacing: 4) {
+                                Text(e.createdAt.dayTitle + " " + e.createdAt.hm)
+                                    .font(.caption).foregroundStyle(.secondary)
+                                Text(e.text).font(.body).lineLimit(3)
+                            }
+                        }
+                        .buttonStyle(.plain)
+                    }
+                }
+            }
+            .navigationTitle("搜索")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) { Button("取消") { showSearch = false } }
+            }
+            .searchable(text: $searchText, placement: .navigationBarDrawer(displayMode: .always),
+                        prompt: "搜索日记内容")
+            .sheet(item: $searchEditing) { DiaryEditorView(entry: $0) }
         }
     }
 
