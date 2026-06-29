@@ -17,7 +17,6 @@ struct TimeBlockEditorView: View {
     @State private var end: Date
     @State private var durationMinutes: Int
     @State private var note: String
-    @State private var toast: String?   // 轻提示（如「请选择分类」）
 
     // 新建：默认时长 1 小时。指定 hour 则从该整点起；否则当天用当前整点、他天用 9 点
     init(day: Date, hour: Int? = nil) {
@@ -128,28 +127,11 @@ struct TimeBlockEditorView: View {
                     Button("保存") { save() }.fontWeight(.semibold).disabled(end <= start || categoryKey.isEmpty)
                 }
             }
-            .overlay(alignment: .bottom) {
-                if let t = toast {
-                    Text(t)
-                        .font(.subheadline)
-                        .padding(.horizontal, 16).padding(.vertical, 10)
-                        .background(.ultraThinMaterial, in: Capsule())
-                        .padding(.bottom, 40)
-                        .transition(.opacity)
-                }
-            }
-        }
-    }
-
-    private func showToast(_ msg: String) {
-        withAnimation { toast = msg }
-        DispatchQueue.main.asyncAfter(deadline: .now() + 1.6) {
-            withAnimation { toast = nil }
         }
     }
 
     private func save() {
-        guard !categoryKey.isEmpty else { showToast("请选择分类"); return }
+        guard !categoryKey.isEmpty else { return }   // 保险：分类未选不保存（按钮已置灰）
         if let b = existing {
             b.title = title; b.category = categoryKey
             b.start = start; b.end = end; b.note = note
