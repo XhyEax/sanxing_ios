@@ -44,6 +44,7 @@ private final class FrameBox { var dayFrames: [Date: CGRect] = [:] }
 
 struct TimelineView: View {
     var goTodayTrigger: Int = 0   // 点「时间轴」Tab 时 +1 → 跳当前第一个空闲
+    @Binding var selecting: Bool  // 多选态上报给外层（用于隐藏自定义底栏）
 
     @Environment(\.modelContext) private var ctx
     @Query(sort: \TimeBlock.start, order: .forward) private var allBlocks: [TimeBlock]
@@ -258,6 +259,10 @@ struct TimelineView: View {
             .navigationTitle(selectionMode ? "已选 \(totalSelected)" : "今日")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar { toolbarContent }
+            .safeAreaInset(edge: .bottom, spacing: 0) {
+                if selectionMode { selectionBar }
+            }
+            .onChange(of: selectionMode) { _, v in selecting = v }
             .sheet(isPresented: $showFillDialog) {
                 NavigationStack {
                     ScrollView {
@@ -285,13 +290,8 @@ struct TimelineView: View {
             } message: {
                 Text("将选中的块合并成一个，保留所选块的标题/分类/备注，范围覆盖全部。")
             }
-            .confirmationDialog("", isPresented: Binding(
-                get: { rowMenu != nil }, set: { if !$0 { rowMenu = nil } }
-            ), titleVisibility: .hidden, presenting: rowMenu) { target in
-                switch target {
-                case .block(let b): blockTimeMenu(b)
-                case .idle(let s, let e): idleTimeMenu(s, e)
-                }
+            .sheet(item: $rowMenu) { target in
+                rowMenuSheet(target)
             }
             .sheet(item: $newBlock, onDismiss: afterEdit) {
                 TimeBlockEditorView(start: $0.start, end: $0.end)
@@ -431,6 +431,51 @@ struct TimelineView: View {
         .id(dayHeaderID(day))
     }
 
+    // 多选态底部操作栏（自绘，替代 .bottomBar——自定义 TabView 下 .bottomBar 会被底栏遮挡）
+    @ViewBuilder
+    private var selectionBar: some View {
+        HStack(spacing: 0) {
+            Button { showFillDialog = true } label: {
+                Label("填充\(selectedIdleCount == 0 ? "" : " \(selectedIdleCount)")",
+                      systemImage: "rectangle.fill.badge.plus")
+            }
+            .disabled(selectedIdleCount == 0)
+            if let b = singleBlock {
+                if Date.now < b.end {
+                    Spacer()
+                    Button { setStartNow(b); exitSelection() } label: { Image(systemName: "arrow.left.to.line") }
+                }
+                if Date.now > b.start {
+                    Spacer()
+                    Button { setEndNow(b); exitSelection() } label: { Image(systemName: "arrow.right.to.line") }
+                }
+                if selectedIdleCount > 0 {
+                    Spacer()
+                    Button { mergeSelected() } label: { Image(systemName: "arrow.triangle.merge") }
+                }
+                if hasGapBefore(b) {
+                    Spacer()
+                    Button { mergeGapBefore(b); exitSelection() } label: { Image(systemName: "arrow.up.to.line") }
+                }
+                if hasGapAfter(b) {
+                    Spacer()
+                    Button { mergeGapAfter(b); exitSelection() } label: { Image(systemName: "arrow.down.to.line") }
+                }
+            }
+            if canMergeBlocks {
+                Spacer()
+                Button { showMergeTargetDialog = true } label: { Label("合并", systemImage: "arrow.triangle.merge") }
+            }
+            Spacer()
+            Button(role: .destructive) { deleteSelected() } label: {
+                Label("删除\(selected.isEmpty ? "" : " \(selected.count)")", systemImage: "trash")
+            }
+            .disabled(selected.isEmpty)
+        }
+        .padding(.horizontal, 16).padding(.top, 10)
+        .background(.bar)
+    }
+
     @ToolbarContentBuilder
     private var toolbarContent: some ToolbarContent {
         if selectionMode {
@@ -440,46 +485,6 @@ struct TimelineView: View {
             ToolbarItemGroup(placement: .navigationBarTrailing) {
                 Button { shareScreenshot() } label: { Image(systemName: "square.and.arrow.up") }
                 Button("完成") { exitSelection() }
-            }
-            ToolbarItemGroup(placement: .bottomBar) {
-                Button { showFillDialog = true } label: {
-                    Label("填充\(selectedIdleCount == 0 ? "" : " \(selectedIdleCount)")",
-                          systemImage: "rectangle.fill.badge.plus")
-                }
-                .disabled(selectedIdleCount == 0)
-                if let b = singleBlock {
-                    if Date.now < b.end {   // 开始改为现在
-                        Spacer()
-                        Button { setStartNow(b); exitSelection() } label: { Image(systemName: "arrow.left.to.line") }
-                    }
-                    if Date.now > b.start {   // 结束改为现在
-                        Spacer()
-                        Button { setEndNow(b); exitSelection() } label: { Image(systemName: "arrow.right.to.line") }
-                    }
-                    if selectedIdleCount > 0 {   // 并入选中空闲
-                        Spacer()
-                        Button { mergeSelected() } label: { Image(systemName: "arrow.triangle.merge") }
-                    }
-                    if hasGapBefore(b) {   // 合并前面空闲
-                        Spacer()
-                        Button { mergeGapBefore(b); exitSelection() } label: { Image(systemName: "arrow.up.to.line") }
-                    }
-                    if hasGapAfter(b) {    // 合并后面空闲
-                        Spacer()
-                        Button { mergeGapAfter(b); exitSelection() } label: { Image(systemName: "arrow.down.to.line") }
-                    }
-                }
-                if canMergeBlocks {   // 选中多个块 → 合并成其中一个
-                    Spacer()
-                    Button { showMergeTargetDialog = true } label: {
-                        Label("合并", systemImage: "arrow.triangle.merge")
-                    }
-                }
-                Spacer()
-                Button(role: .destructive) { deleteSelected() } label: {
-                    Label("删除\(selected.isEmpty ? "" : " \(selected.count)")", systemImage: "trash")
-                }
-                .disabled(selected.isEmpty)
             }
         } else {
             ToolbarItemGroup(placement: .navigationBarLeading) {
@@ -678,20 +683,38 @@ struct TimelineView: View {
         }
     }
 
-    // 块左侧时间菜单
+    // 共享菜单 sheet：用 List 呈现 Label（带图标）按钮，替代每行的 Menu（避免滚动卡顿）
+    private func rowMenuSheet(_ target: RowMenu) -> some View {
+        NavigationStack {
+            List {
+                switch target {
+                case .block(let b): blockTimeMenu(b)
+                case .idle(let s, let e): idleTimeMenu(s, e)
+                }
+            }
+            .navigationTitle("操作")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) { Button("取消") { rowMenu = nil } }
+            }
+        }
+        .presentationDetents([.medium])
+    }
+
+    // 块左侧时间菜单（在共享 sheet 里呈现；每项点完关闭 sheet）
     @ViewBuilder
     private func blockTimeMenu(_ b: TimeBlock) -> some View {
         if hasGapBefore(b) {
-            Button { mergeGapBefore(b) } label: { Label("合并上方空闲", systemImage: "arrow.up.to.line") }
+            Button { rowMenu = nil; mergeGapBefore(b) } label: { Label("合并上方空闲", systemImage: "arrow.up.to.line") }
         }
         if hasGapAfter(b) {
-            Button { mergeGapAfter(b) } label: { Label("合并下方空闲", systemImage: "arrow.down.to.line") }
+            Button { rowMenu = nil; mergeGapAfter(b) } label: { Label("合并下方空闲", systemImage: "arrow.down.to.line") }
         }
         if Date.now < b.end {
-            Button { setStartNow(b) } label: { Label("现在开始", systemImage: "arrow.left.to.line") }
+            Button { rowMenu = nil; setStartNow(b) } label: { Label("现在开始", systemImage: "arrow.left.to.line") }
         }
         if Date.now > b.start {
-            Button { setEndNow(b) } label: { Label("现在结束", systemImage: "arrow.right.to.line") }
+            Button { rowMenu = nil; setEndNow(b) } label: { Label("现在结束", systemImage: "arrow.right.to.line") }
         }
     }
 
@@ -699,25 +722,25 @@ struct TimelineView: View {
     @ViewBuilder
     private func idleTimeMenu(_ s: Date, _ e: Date) -> some View {
         if let p = blockAbove(s) {
-            Button { p.end = max(p.end, e); afterEdit() } label: { Label("合并到上方", systemImage: "arrow.up.to.line") }
+            Button { rowMenu = nil; p.end = max(p.end, e); afterEdit() } label: { Label("合并到上方", systemImage: "arrow.up.to.line") }
         }
         if let n = blockBelow(e) {
-            Button { n.start = min(n.start, s); afterEdit() } label: { Label("合并到下方", systemImage: "arrow.down.to.line") }
+            Button { rowMenu = nil; n.start = min(n.start, s); afterEdit() } label: { Label("合并到下方", systemImage: "arrow.down.to.line") }
         }
-        Button { newBlock = NewBlock(start: s, end: e) } label: { Label("新建块", systemImage: "plus") }
+        Button { rowMenu = nil; newBlock = NewBlock(start: s, end: e) } label: { Label("新建块", systemImage: "plus") }
         let topFree = blockAbove(s)?.end ?? s.startOfDay   // 上方连续空闲的顶（到最近的块或当天 0 点）
         if topFree < s {   // 上方还有空闲 → 新建块一并覆盖该空闲
-            Button { newBlock = NewBlock(start: topFree, end: e) } label: {
+            Button { rowMenu = nil; newBlock = NewBlock(start: topFree, end: e) } label: {
                 Label("合并&新建块", systemImage: "plus.square.on.square")
             }
         }
         let now = Date.now
         if now > s && now < e {   // 当前时刻落在此空闲内 → 可建「到现在为止」的结束块
-            Button { newBlock = NewBlock(start: s, end: now) } label: {
+            Button { rowMenu = nil; newBlock = NewBlock(start: s, end: now) } label: {
                 Label("新建结束块", systemImage: "stop.circle")
             }
             if topFree < s {
-                Button { newBlock = NewBlock(start: topFree, end: now) } label: {
+                Button { rowMenu = nil; newBlock = NewBlock(start: topFree, end: now) } label: {
                     Label("合并&新建结束块", systemImage: "stop.circle")
                 }
             }
