@@ -1,6 +1,7 @@
 // Views/DiaryEditorView.swift — 新建/编辑日记条目
 import SwiftUI
 import SwiftData
+import UIKit
 
 struct DiaryEditorView: View {
     @Environment(\.modelContext) private var ctx
@@ -10,6 +11,7 @@ struct DiaryEditorView: View {
     @State private var text: String
     @State private var mood: Int
     @State private var createdAt: Date
+    @State private var copied = false
 
     init() {
         existing = nil
@@ -46,7 +48,13 @@ struct DiaryEditorView: View {
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) { Button("取消") { dismiss() } }
-                ToolbarItem(placement: .confirmationAction) {
+                ToolbarItemGroup(placement: .confirmationAction) {
+                    Button {
+                        UIPasteboard.general.string = text; copied = true
+                    } label: {
+                        Image(systemName: copied ? "checkmark" : "doc.on.doc")
+                    }
+                    .disabled(text.isEmpty)
                     Button("保存") { save() }
                         .disabled(text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
                 }
