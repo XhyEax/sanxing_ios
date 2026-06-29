@@ -874,33 +874,31 @@ struct TimelineView: View {
         let t = Date.now.startOfDay
         days = (-Self.windowRadius...Self.windowRadius).map { t.addingDays($0) }   // 今天居中，前后各 3 天
         focusedDay = t
-        scrollAnchor = .top
-        scrolledID = centerTopTarget()
+        // 首屏/切回：把当前时间所在的块/整点居中（与点 Tab 行为一致）
+        scrollAnchor = .center
+        scrolledID = nowRowID()
     }
 
-    // 定位目标行（置顶）：当前时间往前数 2 个块那一行 →「最近 2 个块在上方完整显示、当前时间在其下」。
-    // 顶部对齐到块边界，天然避免最上面的块被截断（不会出现半个块）。
-    private func centerTopTarget() -> Date {
-        let t = Date.now.startOfDay
-        let now = Date.now
-        let preceding = segs(of: t).filter { $0.start < now }.sorted { $0.start < $1.start }
-        guard !preceding.isEmpty else {
-            return firstFreeHourStart() ?? visibleHourStarts(of: t).first ?? t
-        }
-        let target = preceding[max(0, preceding.count - 2)].start
-        return cal.date(bySettingHour: cal.component(.hour, from: target), minute: 0, second: 0, of: t) ?? t
-    }
-
-    // 点「时间轴」Tab：定位到「当前时间往前 2 个块」那行（置顶，最近 2 块在上、当前时间在下）
+    // 点「时间轴」Tab：把「当前时间所在的块/整点」滚到视图中央
     private func scrollToToday() {
         let t = Date.now.startOfDay
         days = (-Self.windowRadius...Self.windowRadius).map { t.addingDays($0) }   // 今天居中重建
         focusedDay = t
-        let target = centerTopTarget()
-        DispatchQueue.main.async {   // 等窗口/行就绪再定位（无动画）
+        let target = nowRowID()
+        DispatchQueue.main.async {   // 等窗口/行就绪再居中定位（无动画）
             var tx = Transaction(); tx.disablesAnimations = true
-            withTransaction(tx) { scrollAnchor = .top; scrolledID = target }
+            withTransaction(tx) { scrollAnchor = .center; scrolledID = target }
         }
+    }
+
+    // 当前时刻所在的行 id（整点 hour-start）：优先取覆盖 now 的块所在整点，否则取 now 的整点
+    private func nowRowID() -> Date {
+        let t = Date.now.startOfDay
+        let now = Date.now
+        if let seg = segs(of: t).first(where: { $0.start <= now && $0.end > now }) {
+            return cal.date(bySettingHour: cal.component(.hour, from: seg.start), minute: 0, second: 0, of: t) ?? nowHourStart
+        }
+        return nowHourStart
     }
 
     // 今天从当前钟点起、第一个含空闲（空整点或小空闲段）的行
