@@ -46,7 +46,6 @@ struct TimelineView: View {
     @State private var rowFrames: [Date: CGRect] = [:]
     @State private var dayFrames: [Date: CGRect] = [:]   // 各天 header 在视口中的位置（判可见天）
     @State private var dragAnchor: Date?
-    @State private var isExtending = false           // 向上加载历史天的防抖
     @State private var scrolledID: Date?            // scrollPosition：当前顶部行/滚动目标（hour-start）
     @State private var overlap: OverlapPair?        // 编辑后检测到的重叠，弹窗让用户选择如何处理
     @State private var dayCache = DayBlocksCache()
@@ -205,7 +204,7 @@ struct TimelineView: View {
             .scrollPosition(id: $scrolledID, anchor: .top)
             .coordinateSpace(name: "timeline")
             .onPreferenceChange(RowFrameKey.self) { rowFrames = $0 }
-            .onPreferenceChange(DayFrameKey.self) { dayFrames = $0; updateFocusedDay($0); maybeExtendBackward($0) }
+            .onPreferenceChange(DayFrameKey.self) { dayFrames = $0; updateFocusedDay($0) }
             .highPriorityGesture(selectDragGesture)
             .onAppear { setupIfNeeded() }
             .onChange(of: goTodayTrigger) { _, _ in scrollToToday() }
@@ -786,26 +785,16 @@ struct TimelineView: View {
 
     // MARK: - 窗口 / 滚动
 
-    // 窗口跨度：以中心天为基准前后各 windowRadius 天（预加载前后 7 天；更远由 goToDay 重建窗口）
-    private static let windowRadius = 7
+    // 窗口跨度：以中心天为基准前后各 windowRadius 天（前 3 天后 3 天；更远由 goToDay 重建窗口）
+    private static let windowRadius = 3
 
     private func setupIfNeeded() {
         guard days.isEmpty else { return }
         let t = Date.now.startOfDay
-        days = (0...(2 * Self.windowRadius)).map { t.addingDays($0) }   // 今天打头，向后预留若干天
+        days = (-Self.windowRadius...Self.windowRadius).map { t.addingDays($0) }   // 今天居中，前后各 3 天
         focusedDay = t
         // 首屏定位：当前时间往前数 2 个块的那一行置顶（让最近 2 个块显示在当前时刻上方）
         scrolledID = initialScrollTarget() ?? visibleHourStarts(of: t).first
-    }
-
-    // 在顶部继续下拉（想看更早）时，往前追加一批历史天；scrollPosition 锚定保证不跳动
-    private func maybeExtendBackward(_ frames: [Date: CGRect]) {
-        guard !isExtending, let first = days.first, let f = frames[first] else { return }
-        guard f.minY > 120 else { return }   // 仅当最顶那天 header 被下拉出明显空间（过顶回弹）才加载
-        guard first > Date.now.startOfDay.addingDays(-365) else { return }   // 最多往前一年
-        isExtending = true
-        days.insert(contentsOf: (1...Self.windowRadius).map { first.addingDays(-$0) }.reversed(), at: 0)
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) { isExtending = false }
     }
 
     // 当前时刻之前的第 2 个块所在的整点行（不足 2 个则取最早的；今天无既往块则退回首个空闲）
@@ -819,11 +808,10 @@ struct TimelineView: View {
         return cal.date(bySettingHour: cal.component(.hour, from: target), minute: 0, second: 0, of: t)
     }
 
-    // 点「时间轴」Tab：把窗口重建成「今天打头」，今天 0 点即内容顶部 →
-    // 与系统「重复点 Tab 滚到内容顶部」一致，不再先滑到 7 天前。
+    // 点「时间轴」Tab：以今天为中心重建窗口并定位到今天 0 点
     private func scrollToToday() {
         let t = Date.now.startOfDay
-        days = (0...(2 * Self.windowRadius)).map { t.addingDays($0) }   // 丢掉向上加载的历史天，今天回到顶部
+        days = (-Self.windowRadius...Self.windowRadius).map { t.addingDays($0) }
         focusedDay = t
         let target = visibleHourStarts(of: t).first   // 今天首个可见整点（即 0 点）
         DispatchQueue.main.async {
