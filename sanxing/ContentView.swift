@@ -21,21 +21,17 @@ struct MainTabView: View {
     ]
 
     var body: some View {
-        ZStack {
-            page(0) { TimelineView(goTodayTrigger: todayTrigger) }
-            page(1) { DiaryView() }
-            page(2) { StatsView() }
-            page(3) { SettingsView() }
+        // 只渲染当前页：避免 ZStack 叠多个 NavigationStack 导致的布局错乱（整体左移）
+        Group {
+            switch selection {
+            case 0: TimelineView(goTodayTrigger: todayTrigger)
+            case 1: DiaryView()
+            case 2: StatsView()
+            default: SettingsView()
+            }
         }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
         .safeAreaInset(edge: .bottom, spacing: 0) { bottomBar }
-    }
-
-    // 常驻所有页，仅切换可见性（保留各自状态）
-    @ViewBuilder private func page<V: View>(_ i: Int, @ViewBuilder _ content: () -> V) -> some View {
-        content()
-            .frame(maxWidth: .infinity, maxHeight: .infinity)   // 强制铺满，避免被挤窄/左移
-            .opacity(selection == i ? 1 : 0)
-            .allowsHitTesting(selection == i)
     }
 
     private var bottomBar: some View {
