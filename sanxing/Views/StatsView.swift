@@ -66,7 +66,9 @@ struct StatsView: View {
 
                 if rangeDays > 1, let key = effectiveKey {
                     let style = catStyle(for: key, custom: customCats)
-                    Section("每日趋势 · \(style.name)") { dailyChart(for: key, style: style) }
+                    Section("每日趋势 · \(style.name) · 平均 \(formatDuration(avgSeconds(for: key)))") {
+                        dailyChart(for: key, style: style)
+                    }
                 }
 
                 if !byCategory.isEmpty {
@@ -102,10 +104,15 @@ struct StatsView: View {
         }
     }
 
+    // 某分类在所选范围内的每日平均时长
+    private func avgSeconds(for key: String) -> TimeInterval {
+        let data = perDay(for: key)
+        return data.isEmpty ? 0 : data.reduce(0) { $0 + $1.seconds } / Double(data.count)
+    }
+
     private func dailyChart(for key: String, style: CatStyle) -> some View {
         let data = perDay(for: key)
         let sel = selectedDay.flatMap { s in data.first { cal.isDate($0.day, inSameDayAs: s) } }
-        let avg = data.isEmpty ? 0 : data.reduce(0) { $0 + $1.seconds } / Double(data.count)
         return Chart(data, id: \.day) { item in
             BarMark(
                 x: .value("日期", item.day, unit: .day),
@@ -115,29 +122,22 @@ struct StatsView: View {
             .cornerRadius(3)
             .opacity(sel == nil || cal.isDate(sel!.day, inSameDayAs: item.day) ? 1 : 0.35)
 
-            // 平均时长：绿色虚线
-            RuleMark(y: .value("平均", avg / 3600))
+            // 平均时长：绿色虚线（标注移到 section 标题）
+            RuleMark(y: .value("平均", avgSeconds(for: key) / 3600))
                 .foregroundStyle(.green)
                 .lineStyle(StrokeStyle(lineWidth: 1, dash: [5, 4]))
-                .annotation(position: .top, alignment: .trailing, spacing: 0) {
-                    Text("平均 \(formatDuration(avg))").font(.caption2).foregroundStyle(.green)
-                }
 
-            // 十字交叉：跟随按下的位置（竖线=日期，横线=时长，y 轴标注具体时长）
-            if let sel {
-                RuleMark(x: .value("日期", sel.day, unit: .day))
-                    .foregroundStyle(.secondary.opacity(0.5))
+            if let sel, cal.isDate(sel.day, inSameDayAs: item.day) {
+                RuleMark(x: .value("日期", item.day, unit: .day))
+                    .foregroundStyle(.clear)
                     .annotation(position: .top, spacing: 2, overflowResolution: .init(x: .fit, y: .disabled)) {
-                        Text(sel.day.monthDay).font(.caption2).foregroundStyle(.secondary)
-                    }
-                RuleMark(y: .value("时长", sel.seconds / 3600))
-                    .foregroundStyle(.secondary.opacity(0.5))
-                    .lineStyle(StrokeStyle(lineWidth: 1, dash: [4, 3]))
-                    .annotation(position: .leading, alignment: .leading, spacing: 2) {
-                        Text(sel.seconds > 0 ? formatDuration(sel.seconds) : "无记录")
-                            .font(.caption2).bold().foregroundStyle(style.color)
-                            .padding(.horizontal, 5).padding(.vertical, 1)
-                            .background(.ultraThinMaterial, in: Capsule())
+                        VStack(spacing: 1) {
+                            Text(sel.day.monthDay).font(.caption2).foregroundStyle(.secondary)
+                            Text(sel.seconds > 0 ? formatDuration(sel.seconds) : "无记录")
+                                .font(.caption).bold().foregroundStyle(style.color)
+                        }
+                        .padding(.horizontal, 8).padding(.vertical, 4)
+                        .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 6))
                     }
             }
         }
