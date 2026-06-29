@@ -473,8 +473,7 @@ struct TimelineView: View {
             .disabled(selected.isEmpty)
         }
         .padding(.horizontal, 16).padding(.vertical, 12)
-        .background(.bar)
-        .padding(.bottom, 10)   // 与底部标签栏拉开距离
+        .background(.bar)   // 紧贴底部标签栏，无空隙
     }
 
     @ToolbarContentBuilder
