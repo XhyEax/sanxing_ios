@@ -472,8 +472,8 @@ struct TimelineView: View {
             }
             .disabled(selected.isEmpty)
         }
-        .font(.title3)
-        .imageScale(.large)   // 操作图标加大
+        .font(.body)
+        .imageScale(.large)   // 操作图标略大
         .padding(.horizontal, 16).padding(.vertical, 12)
         .background(.bar)   // 紧贴底部标签栏，无空隙
     }
