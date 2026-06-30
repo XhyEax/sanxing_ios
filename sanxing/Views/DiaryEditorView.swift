@@ -12,6 +12,7 @@ struct DiaryEditorView: View {
     @State private var mood: Int
     @State private var createdAt: Date
     @State private var copied = false
+    @FocusState private var textFocused: Bool
 
     init() {
         existing = nil
@@ -33,9 +34,10 @@ struct DiaryEditorView: View {
                 Section("正文") {
                     TextField("写点什么…", text: $text, axis: .vertical)
                         .lineLimit(6...20)
+                        .focused($textFocused)
                 }
-                Section("时间") {
-                    DatePicker("记录时间", selection: $createdAt)
+                Section("记录时间") {
+                    DatePicker("时间", selection: $createdAt)
                 }
                 if existing != nil {
                     Section {
@@ -58,6 +60,9 @@ struct DiaryEditorView: View {
                     Button("保存") { save() }
                         .disabled(text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
                 }
+            }
+            .onAppear {
+                if existing == nil { textFocused = true }   // 新建：自动聚焦正文，弹出键盘
             }
         }
     }
