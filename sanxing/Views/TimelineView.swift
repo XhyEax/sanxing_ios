@@ -472,6 +472,8 @@ struct TimelineView: View {
             }
             .disabled(selected.isEmpty)
         }
+        .font(.title3)
+        .imageScale(.large)   // 操作图标加大
         .padding(.horizontal, 16).padding(.vertical, 12)
         .background(.bar)   // 紧贴底部标签栏，无空隙
     }
@@ -821,7 +823,8 @@ struct TimelineView: View {
         let b = seg.block
         let isSel = selected.contains(b.id)
         let s = catStyle(for: b.category, custom: customCats)
-        let range = "\(seg.start.hm)-\(seg.end.hm) · \(formatDuration(seg.end.timeIntervalSince(seg.start)))"
+        // 跨天块两段都显示整条记录的完整起止与总时长（不按当天裁剪）
+        let range = "\(clock(b.start))-\(clock(b.end)) · \(formatDuration(b.end.timeIntervalSince(b.start)))"
         return HStack(spacing: 10) {
             if selectionMode {
                 Image(systemName: isSel ? "checkmark.circle.fill" : "circle")
