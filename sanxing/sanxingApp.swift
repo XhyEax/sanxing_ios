@@ -18,9 +18,11 @@ struct sanxingApp: App {
         ])
         // 云端镜像：本地存一份 SQLite，同时同步到 iCloud 私有库。
         // 底层 NSPersistentCloudKitContainer 始终保留本地副本——切 iCloud 账号本地数据不丢。
-        // 给主上下文挂 UndoManager，支持时间块/日记的撤销与恢复
+        // 给主上下文挂 UndoManager，支持时间块/日记的撤销与恢复。
+        // mainContext 是 @MainActor；该属性初始化器在 @main App 启动时于主线程执行，
+        // 用 assumeIsolated 满足严格并发检查（否则 Xcode Cloud 严格模式报错）。
         func withUndo(_ c: ModelContainer) -> ModelContainer {
-            c.mainContext.undoManager = UndoManager()
+            MainActor.assumeIsolated { c.mainContext.undoManager = UndoManager() }
             return c
         }
         let cloudConfig = ModelConfiguration(
